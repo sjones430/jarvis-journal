@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#050914">
 <meta name="description" content="Jarvis — personal trading journal and analytics">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>Jarvis</title>
 <style>
 :root{--bg:#050914;--panel:#10182b;--line:#263653;--blue:#087cff;--cyan:#20baff;--green:#00d889;--red:#ff405b;--muted:#9aa9c2;--text:#f4f7ff}
@@ -15,7 +15,7 @@ body{margin:0;background:radial-gradient(ellipse at 50% -16%,#142746 0,#070d1b 4
 button,input,select,textarea{font:inherit}button{cursor:pointer;color:inherit}
 .app{max-width:430px;margin:auto;padding:9px 9px 24px}
 .brand{display:flex;align-items:center;gap:10px;padding:2px 4px 11px;border-bottom:1px solid #1c2e4b;margin-bottom:10px}
-.brand .logo{flex:0 0 58px;width:58px;height:58px;filter:drop-shadow(0 0 8px #20baff55)}
+.brand .logo{flex:0 0 58px;width:58px;height:58px;filter:drop-shadow(0 0 8px #20baff55);object-fit:cover;border-radius:50%;border:2px solid #263958}
 .brand h1{font-size:18px;font-weight:800;margin:0;letter-spacing:.4px}
 .brand small{display:block;font-size:11px;color:#c0cce0;margin-top:2px}
 .nav{position:fixed;z-index:50;left:50%;right:auto;transform:translateX(-50%);bottom:0;width:min(430px,100%);display:grid;grid-template-columns:repeat(6,minmax(0,1fr));padding:6px 3px calc(6px + env(safe-area-inset-bottom));background:linear-gradient(180deg,#080e1df7,#030711 90%);border:1px solid #263958;border-bottom:0;border-radius:14px 14px 0 0;box-shadow:0 -8px 25px #0009}
@@ -96,18 +96,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
 <body>
 <div class="app">
   <header class="brand">
-    <svg class="logo" viewBox="0 0 120 120" role="img" aria-label="Jarvis logo">
-      <defs>
-        <linearGradient id="jg" x1="0" y1="0" x2="1" y2="1">
-          <stop stop-color="#20baff"/><stop offset="1" stop-color="#00d889"/>
-        </linearGradient>
-      </defs>
-      <circle cx="60" cy="60" r="52" fill="#050b16" stroke="url(#jg)" stroke-width="3"/>
-      <path d="M28 44 Q60 12 92 44 L86 84 Q60 104 34 84 Z" fill="none" stroke="url(#jg)" stroke-width="3"/>
-      <circle cx="46" cy="56" r="6" fill="#20baff"/>
-      <circle cx="74" cy="56" r="6" fill="#20baff"/>
-      <path d="M44 76 Q60 86 76 76" fill="none" stroke="#00d889" stroke-width="3" stroke-linecap="round"/>
-    </svg>
+    <img src="icons/icon-192.png" alt="Jarvis Logo" class="logo">
     <div>
       <h1>JARVIS</h1>
       <small>Track · Analyze · Improve</small>
