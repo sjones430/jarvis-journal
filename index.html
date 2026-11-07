@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#050914">
+<meta name="description" content="Jarvis — personal trading journal and analytics">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
+<link rel="manifest" href="manifest.json">
+<title>Jarvis</title>
+<style>
+:root{--bg:#050914;--panel:#10182b;--line:#263653;--blue:#087cff;--cyan:#20baff;--green:#00d889;--red:#ff405b;--muted:#9aa9c2;--text:#f4f7ff}
+*{box-sizing:border-box}html,body{background:#030711}
+body{margin:0;background:radial-gradient(ellipse at 50% -16%,#142746 0,#070d1b 46%,#030711 100%);color:var(--text);font:14px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh;padding-bottom:88px}
+button,input,select,textarea{font:inherit}button{cursor:pointer;color:inherit}
+.app{max-width:430px;margin:auto;padding:9px 9px 24px}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 4px 11px;border-bottom:1px solid #1c2e4b;margin-bottom:10px}
+.brand .logo{flex:0 0 58px;width:58px;height:58px;filter:drop-shadow(0 0 8px #20baff55)}
+.brand h1{font-size:18px;font-weight:800;margin:0;letter-spacing:.4px}
+.brand small{display:block;font-size:11px;color:#c0cce0;margin-top:2px}
+.nav{position:fixed;z-index:50;left:50%;right:auto;transform:translateX(-50%);bottom:0;width:min(430px,100%);display:grid;grid-template-columns:repeat(6,minmax(0,1fr));padding:6px 3px calc(6px + env(safe-area-inset-bottom));background:linear-gradient(180deg,#080e1df7,#030711 90%);border:1px solid #263958;border-bottom:0;border-radius:14px 14px 0 0;box-shadow:0 -8px 25px #0009}
+.nav button{border:0;background:transparent;text-align:center;padding:5px 2px;border-radius:10px;color:#9caac2;font-size:9px;min-height:53px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.nav button .ico{font-size:20px;line-height:21px;color:#9aa9c2}
+.nav button.active{background:#10294b66;color:#36baff}
+.nav button.active .ico{color:#21b8ff;text-shadow:0 0 12px #168bff}
+main{min-width:0}
+.top{display:flex;align-items:center;justify-content:space-between;margin:1px 0 12px;padding:0 4px}
+.top h2{margin:0;font-size:21px;font-weight:800}
+.top p{margin:3px 0 0;color:var(--muted);font-size:11px}
+.panel{background:linear-gradient(145deg,#151f35,#0a1222);border:1px solid #263958;border-radius:14px;box-shadow:0 7px 22px #0006;padding:12px;margin-bottom:9px;position:relative;overflow:hidden}
+.panel h3{margin:0 0 10px;font-size:14px;font-weight:750}
+.muted{color:var(--muted)}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.btn{border:1px solid #30476c;background:linear-gradient(145deg,#15223b,#0c1629);border-radius:10px;min-height:41px;padding:10px 13px;transition:filter .15s,transform .15s}
+.btn:active{transform:scale(.98);filter:brightness(1.2)}
+.btn.primary{border:0;background:linear-gradient(100deg,#087cff,#075ee0);box-shadow:0 5px 16px #087cff38;font-weight:800}
+.btn.small{padding:7px 10px;min-height:34px;font-size:12px}
+.btn.danger{border-color:#713246;color:#ff9bad}
+.field{display:grid;gap:5px;margin-bottom:8px;min-width:0}
+.field label{font-size:12px;color:#e0e7f2}
+.field input,.field select,.field textarea,.search{width:100%;min-width:0;background:#080f20;border:1px solid #293b5c;border-radius:10px;padding:10px 11px;min-height:41px;color:#f4f7ff;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:#168bff;box-shadow:0 0 0 2px #087cff22}
+.field textarea{min-height:75px;resize:vertical}
+.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 9px}
+.checkgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.check{display:flex;align-items:center;gap:7px;min-height:38px;padding:8px;background:linear-gradient(145deg,#111f35,#0a1527);border:1px solid #2b4265;border-radius:9px;font-size:11px;cursor:pointer}
+.check input{width:16px;height:16px;min-height:16px;margin:0;flex:0 0 16px;accent-color:#087cff;cursor:pointer}
+.check:has(input:checked){border-color:#168bff;background:linear-gradient(120deg,#102d50,#0c1d34);box-shadow:inset 0 0 0 1px #168bff30}
+.notice{padding:10px 12px;border:1px solid #31567b;background:linear-gradient(110deg,#0b2036,#101d34);border-radius:10px;color:#b9d7f5;font-size:11px;margin-bottom:12px}
+.hero-balance{background:linear-gradient(115deg,#0d1b30 0%,#073b36 77%,#071b2a);border:1px solid #176e69;border-radius:16px;padding:15px 16px 13px;margin-bottom:9px;position:relative;overflow:hidden;box-shadow:inset 0 1px 0 #ffffff12,0 7px 22px #0007}
+.hero-balance small{color:#c5d4e6}
+.hero-balance strong{display:block;font-size:31px;margin:5px 0;line-height:1.1}
+.hero-balance .trend{color:var(--green);font-weight:700;font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:9px}
+.stat{background:linear-gradient(145deg,#151f35,#0a1222);border:1px solid #263958;border-radius:14px;padding:10px 6px;min-height:80px;text-align:center}
+.stat label{font-size:10px;color:#d6dfed}
+.stat strong{display:block;font-size:19px;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.green{color:var(--green)}.red{color:var(--red)}.blue{color:#4baaff}
+.grid{display:grid;grid-template-columns:1fr;gap:0}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.mini{background:linear-gradient(145deg,#111f35,#091322);border:1px solid #263958;border-radius:11px;padding:10px}
+.mini span{font-size:11px}.mini b{display:block;font-size:19px;margin-top:4px}
+.pill{display:inline-block;padding:4px 8px;border-radius:99px;background:#142b47;color:#8dcaff;font-size:10px;font-weight:750}
+.pill.win{background:#064832;color:#56f0b4}.pill.loss{background:#4b1728;color:#ff91a5}.pill.open{background:#3a2f14;color:#ffd479}
+.bar{height:8px;background:#172a40;border-radius:10px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#087cff,#20baff)}
+.empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed #29415e;border-radius:12px;background:#0a1425}
+.trade-card{display:grid;grid-template-columns:minmax(0,1fr) 48px 14px;align-items:center;gap:9px;padding:10px;background:linear-gradient(145deg,#121c30,#091221);border:1px solid #293b5c;border-radius:12px;margin:7px 0}
+.trade-card img{width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid #405474}
+.setup-card{display:grid;grid-template-columns:minmax(0,1fr) 50px auto;gap:8px;align-items:center;padding:10px;background:linear-gradient(145deg,#121c30,#091221);border:1px solid #293b5c;border-radius:12px;margin:7px 0}
+.ring{width:49px;height:49px;border-radius:50%;display:grid;place-items:center;border:4px solid var(--green);font-size:11px;font-weight:800;color:#f2f7ff}
+.tablewrap{overflow-x:auto;border-radius:10px}
+table{width:100%;border-collapse:separate;border-spacing:0 5px;min-width:520px}
+th{font-size:10px;color:#91a8c7;border:0;padding:5px 6px;text-align:left}
+td{font-size:11px;padding:9px 6px;background:#0b1527;border-top:1px solid #263958;border-bottom:1px solid #263958;text-align:left}
+td:first-child{border-left:1px solid #263958;border-radius:8px 0 0 8px}
+td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button{flex:1;border:1px solid #293b5c;background:#0a1222;border-radius:10px;padding:9px 5px;color:#c3cce0;min-height:39px;font-weight:650}
+.tabs button.active{background:linear-gradient(100deg,#087cff,#075ee0);border-color:#087cff;color:#fff;box-shadow:0 4px 12px #087cff36}
+.section{display:none}.section.active{display:block;animation:sectionIn .2s ease}
+@keyframes sectionIn{from{opacity:.5;transform:translateY(4px)}to{opacity:1;transform:none}}
+.thumbs{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.thumbs img{width:76px;height:56px;object-fit:cover;border-radius:7px;border:1px solid #35516e;cursor:pointer}
+.settings-group{border:1px solid #263957;border-radius:12px;background:#0c1527;padding:12px;margin:9px 0}
+#errorBanner{display:none;background:#4b1728;color:#ffd7df;border:1px solid #a33;padding:10px;border-radius:10px;margin:8px 0;font-size:12px}
+#errorBanner.show{display:block}
+#lightbox{position:fixed;inset:0;background:#000d;z-index:100;display:none;align-items:center;justify-content:center;touch-action:none}
+#lightbox.show{display:flex}
+#lightbox img{max-width:92vw;max-height:88vh;transform-origin:center;transition:transform .05s;user-select:none;-webkit-user-drag:none}
+#lbClose{position:absolute;top:14px;right:14px;background:#111f38;border:1px solid #33507a;color:#fff;width:44px;height:44px;border-radius:50%;font-size:20px}
+@media(max-width:380px){.formgrid,.checkgrid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="brand">
+    <svg class="logo" viewBox="0 0 120 120" role="img" aria-label="Jarvis logo">
+      <defs>
+        <linearGradient id="jg" x1="0" y1="0" x2="1" y2="1">
+          <stop stop-color="#20baff"/><stop offset="1" stop-color="#00d889"/>
+        </linearGradient>
+      </defs>
+      <circle cx="60" cy="60" r="52" fill="#050b16" stroke="url(#jg)" stroke-width="3"/>
+      <path d="M28 44 Q60 12 92 44 L86 84 Q60 104 34 84 Z" fill="none" stroke="url(#jg)" stroke-width="3"/>
+      <circle cx="46" cy="56" r="6" fill="#20baff"/>
+      <circle cx="74" cy="56" r="6" fill="#20baff"/>
+      <path d="M44 76 Q60 86 76 76" fill="none" stroke="#00d889" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <h1>JARVIS</h1>
+      <small>Track · Analyze · Improve</small>
+    </div>
+  </header>
+
+  <div id="errorBanner" role="alert"></div>
+
+  <nav class="nav" id="nav" aria-label="Primary">
+    <button type="button" data-page="dashboard" class="active"><span class="ico">⌂</span>Dashboard</button>
+    <button type="button" data-page="log"><span class="ico">＋</span>Log Trade</button>
+    <button type="button" data-page="history"><span class="ico">◷</span>History</button>
+    <button type="button" data-page="setups"><span class="ico">◎</span>Setups</button>
+    <button type="button" data-page="analytics"><span class="ico">▥</span>Analytics</button>
+    <button type="button" data-page="settings"><span class="ico">⚙</span>Settings</button>
+  </nav>
+
+  <main>
+    <header class="top"><div><h2 id="pageTitle">Dashboard</h2><p id="pageSub">Your trading performance at a glance.</p></div><span class="pill">JOURNAL</span></header>
+
+    <section id="dashboard" class="section active">
+      <div class="hero-balance"><small>Account Balance</small><strong id="accountBalance">$0.00</strong><div class="trend" id="balanceChange">● Track your progress</div></div>
+      <div class="stats" id="stats"></div>
+      <div class="panel"><h3>Recent Trades</h3><div id="recent"></div></div>
+      <div class="panel"><h3>Performance Snapshot</h3><div id="snapshot" class="cards"></div></div>
+      <div class="panel"><h3>Reason Count Performance</h3><div id="reasonCount"></div></div>
+      <div class="panel"><h3>Top Setup</h3><div id="topSetup"></div></div>
+      <div class="panel"><h3>Best Currency Pair</h3><div id="bestPair"></div></div>
+      <button class="btn primary" style="width:100%;margin-top:6px" type="button" data-goto="log">＋ Log Trade</button>
+    </section>
+
+    <section id="log" class="section">
+      <div class="notice">One trade can contain multiple reasons, timeframes, and screenshots. Screenshots stay attached to this trade and their selected timeframe/reasons.</div>
+      <form id="tradeForm" class="panel" novalidate>
+        <div class="row between"><h3 id="formTitle">Log a Trade</h3><button type="button" class="btn small" id="clearForm">Clear</button></div>
+        <input type="hidden" id="editId">
+        <div class="formgrid">
+          <div class="field"><label>Currency pair</label><input id="pair" placeholder="EUR/USD" required maxlength="40"></div>
+          <div class="field"><label>Date and time</label><input id="tradeDate" type="datetime-local" required></div>
+          <div class="field"><label>Direction</label><select id="direction"><option>CALL</option><option>PUT</option></select></div>
+          <div class="field"><label>Result</label><select id="result"><option value="WIN">WIN</option><option value="LOSS">LOSS</option><option value="OPEN">OPEN / UNRESOLVED</option></select></div>
+          <div class="field"><label>Amount risked</label><input id="risk" type="number" min="0" step="0.01" placeholder="10"></div>
+          <div class="field"><label>Payout (%)</label><input id="payout" type="number" min="0" step="0.1" value="80"></div>
+          <div class="field"><label>Confidence (1–10)</label><input id="confidence" type="number" min="1" max="10" placeholder="7"></div>
+          <div class="field"><label>Session</label><select id="session"><option>London</option><option>New York</option><option>Asian</option><option>Sydney</option><option>London/New York overlap</option><option>Custom</option></select></div>
+          <div class="field"><label>Market condition</label><select id="condition"><option>Trending</option><option>Ranging</option><option>Volatile</option><option>Slow</option><option>Unspecified</option></select></div>
+          <div class="field"><label>Trade category</label><select id="category"><option>Single-timeframe</option><option>Multi-timeframe</option></select></div>
+          <div class="field"><label>Setup quality (1–10)</label><input id="setupQuality" type="number" min="1" max="10"></div>
+          <div class="field"><label>Execution quality (1–10)</label><input id="executionQuality" type="number" min="1" max="10"></div>
+        </div>
+        <div class="field"><label>Reasons (select all that apply)</label><div id="reasonChecks" class="checkgrid"></div></div>
+        <div class="field"><label>Timeframes used</label><div id="tfChecks" class="checkgrid"></div></div>
+        <div class="field"><label>Screenshot attachments (optional)</label><input id="screenshots" type="file" accept="image/*" multiple><small class="muted">For each screenshot, add timeframe and associated reasons after selecting files. Images are stored locally.</small><div id="shotMeta"></div></div>
+        <div class="field"><label>Notes</label><textarea id="notes" placeholder="Trade context, execution notes, observations..." maxlength="5000"></textarea></div>
+        <div class="row"><button class="btn primary" type="submit">Save Trade</button><button class="btn" type="button" id="cancelEdit">Cancel edit</button></div>
+      </form>
+    </section>
+
+    <section id="history" class="section">
+      <div class="panel">
+        <div class="row between"><h3>Trade History</h3><input id="historySearch" class="search" style="max-width:260px" placeholder="Search pair, reason, notes..."></div>
+        <div class="tabs" id="historyTabs"><button class="active" data-filter="ALL">All</button><button data-filter="WIN">Wins</button><button data-filter="LOSS">Losses</button></div>
+        <div id="historyTable"></div>
+      </div>
+    </section>
+
+    <section id="analytics" class="section">
+      <div class="panel"><h3>Analytics Overview</h3><div class="cards" id="analyticsTop"></div></div>
+      <div class="panel"><h3>Win Rate by Number of Reasons</h3><div id="byCount"></div></div>
+      <div class="panel"><h3>Single vs Multi-Timeframe</h3><div id="byCategory"></div></div>
+      <div class="panel"><h3>Exact Reason Combination Performance</h3><div id="byCombo"></div></div>
+      <div class="panel"><h3>Performance by Pair, Session, Direction &amp; Condition</h3><div id="dimensions"></div></div>
+      <div class="panel"><h3>Individual Reason Performance</h3><div id="individualReasons"></div></div>
+      <div class="panel"><h3>Timeframe Performance</h3><div id="timeframeStats"></div></div>
+      <div class="panel"><h3>Execution &amp; Setup Quality</h3><div id="qualityStats"></div></div>
+      <div class="panel"><h3>Risk &amp; Losing Streaks</h3><div id="riskStats"></div></div>
+    </section>
+
+    <section id="setups" class="section">
+      <div class="panel"><div class="row between"><h3>Your Setups</h3><span class="pill">Ranked by journal results</span></div><p class="muted">Exact reason combinations are grouped together. A different combination is a separate setup.</p><div id="setupCards"></div></div>
+      <div class="panel"><h3>Multi-Timeframe Folder</h3><div id="multiStats" class="cards"></div><div id="multiHistory" style="margin-top:12px"></div></div>
+    </section>
+
+    <section id="settings" class="section">
+      <div class="panel"><h3>Account Settings</h3>
+        <div class="formgrid">
+          <div class="field"><label>Starting balance</label><input id="startingBalance" type="number" step="0.01" value="70"></div>
+          <div class="field"><label>Default payout (%)</label><input id="defaultPayout" type="number" step="0.1" value="80"></div>
+          <div class="field"><label>Currency</label><select id="currency"><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option></select></div>
+          <div class="field"><label>Default session</label><select id="defaultSession"><option>New York</option><option>London</option><option>Asian</option><option>Sydney</option><option>London/New York overlap</option><option>Custom</option></select></div>
+        </div>
+        <button class="btn primary" id="saveSettings" type="button">Save Preferences</button>
+      </div>
+      <div class="panel"><h3>Trading Reasons</h3><p class="muted">Add, rename, archive, or reactivate setup reasons. Historical trades keep their reason IDs and name snapshots.</p>
+        <form id="reasonForm" class="row"><input id="newReason" class="search" placeholder="Add a trading reason" style="max-width:360px" maxlength="200"><button class="btn primary" type="submit">Add Reason</button></form>
+        <div id="reasonList" style="margin-top:12px"></div>
+      </div>
+      <div class="panel"><h3>Backup &amp; Restore</h3><p class="muted">Export a complete JSON backup with trades, reason library, screenshots, transactions, and settings.</p>
+        <div class="row"><button class="btn primary" id="exportBtn" type="button">Export Full Backup</button><label class="btn" for="importFile">Restore Backup</label><input id="importFile" type="file" accept="application/json" hidden></div>
+        <p class="muted" style="font-size:11px;margin-top:12px">Data is stored on this device/browser. Automatic and encrypted backups, cloud sync, and native APK packaging are not implemented in this build.</p>
+      </div>
+      <div class="panel"><h3>Account Transactions</h3>
+        <form id="txForm" class="formgrid">
+          <div class="field"><label>Type</label><select id="txType"><option>Deposit</option><option>Withdrawal</option><option>Adjustment</option></select></div>
+          <div class="field"><label>Amount</label><input id="txAmount" type="number" min="0.01" step="0.01" required></div>
+          <div class="field"><label>Date</label><input id="txDate" type="date" required></div>
+          <div class="field"><label>Note</label><input id="txNote" maxlength="500"></div>
+          <button class="btn primary" type="submit">Add Transaction</button>
+        </form>
+        <div id="txList"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+  <button id="lbClose" type="button" aria-label="Close">×</button>
+  <img id="lbImg" alt="Screenshot enlarged">
+</div>
+
+<script src="storage.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
