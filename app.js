@@ -82,6 +82,21 @@ const winRate = arr => {
 const reasonById = id =>
   state.reasons.find(r => r.id === id);
 
+// Legacy database values remain CALL/PUT; the interface consistently shows BUY/SELL.
+function displayDirection(value) {
+  const v = String(value || '').toUpperCase();
+  return v === 'PUT' || v === 'SELL' ? 'SELL' : 'BUY';
+}
+
+function storageDirection(value) {
+  return displayDirection(value) === 'SELL' ? 'PUT' : 'CALL';
+}
+
+function entryCount(trade) {
+  const n = Number.parseInt(trade?.numberEntries, 10);
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 99) : 1;
+}
+
 const reasonsOf = (t, cache) => {
   if (cache && cache.has(t.id)) return cache.get(t.id);
 
@@ -391,7 +406,7 @@ function renderHistory() {
   const arr = [...state.trades]
     .filter(t => state.historyFilter === 'ALL' || t.result === state.historyFilter)
     .filter(t => pair === 'ALL' || t.pair === pair)
-    .filter(t => direction === 'ALL' || t.direction === direction)
+    .filter(t => direction === 'ALL' || displayDirection(t.direction) === direction)
     .filter(t => entryTf === 'ALL' || (entryTf === 'NONE' ? !t.entryTimeframe : t.entryTimeframe === entryTf))
     .filter(t => session === 'ALL' || t.session === session)
     .filter(t => !from || String(t.date || '').slice(0, 10) >= from)
@@ -404,14 +419,15 @@ function renderHistory() {
     ? `<div class="tablewrap">
         <table>
           <thead><tr>
-            <th>Date</th><th>Pair</th><th>Dir</th><th>Entry TF</th>
+            <th>Date</th><th>Pair</th><th>Dir</th><th>Entries</th><th>Entry TF</th>
             <th>Result</th><th>Reasons</th><th>Cat</th><th>Screenshots</th><th>P/L</th><th>Actions</th>
           </tr></thead>
           <tbody>${arr.map(t =>
             `<tr>
               <td>${esc(new Date(t.date).toLocaleString())}</td>
               <td>${esc(t.pair)}</td>
-              <td>${esc(t.direction)}</td>
+              <td>${esc(displayDirection(t.direction))}</td>
+              <td>${entryCount(t)}</td>
               <td>${esc(t.entryTimeframe || '—')}</td>
               <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
               <td>${reasonsOf(t, cache).length}</td>
@@ -429,6 +445,7 @@ function renderHistory() {
       </div>`
     : '<div class="empty">No trades match those filters. Try clearing one or more filters.</div>';
 }
+
 /* ---------- multi-timeframe ---------- */
 
 function renderMulti() {
@@ -454,7 +471,7 @@ function renderMulti() {
           <thead>
             <tr>
               <th>Date</th>
-              <th>Pair</th>
+                            <th>Pair</th>
               <th>Entry TF</th>
               <th>Analysis timeframes</th>
               <th>Reasons</th>
@@ -581,6 +598,33 @@ function renderDailyTradePerformance() {
     : '<div class="empty">Log trades on different days to compare daily performance.</div>';
 }
 
+function renderEntryCountPerformance() {
+  const groups = new Map();
+  state.trades.forEach(t => {
+    const count = entryCount(t);
+    if (!groups.has(count)) groups.set(count, []);
+    groups.get(count).push(t);
+  });
+
+  const rows = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+  const target = $('entryCountPerformance');
+  if (!target) return;
+
+  target.innerHTML = rows.length ? `<div class="tablewrap"><table>
+    <thead><tr><th>Entries</th><th>Sample</th><th>Wins</th><th>Losses</th><th>Draws</th><th>Open</th><th>Win rate</th><th>Loss rate</th></tr></thead>
+    <tbody>${rows.map(([count, trades]) => {
+      const wins = trades.filter(t => t.result === 'WIN').length;
+      const losses = trades.filter(t => t.result === 'LOSS').length;
+      const draws = trades.filter(t => t.result === 'DRAW').length;
+      const open = trades.filter(t => t.result === 'OPEN').length;
+      const decisive = wins + losses;
+      const wr = decisive ? wins / decisive * 100 : 0;
+      const lr = decisive ? losses / decisive * 100 : 0;
+      return `<tr><td>${count}</td><td>${trades.length}</td><td class="green">${wins}</td><td class="red">${losses}</td><td>${draws}</td><td>${open}</td><td>${decisive ? wr.toFixed(1) + '%' : '—'}</td><td>${decisive ? lr.toFixed(1) + '%' : '—'}</td></tr>`;
+    }).join('')}</tbody></table></div><p class="muted" style="font-size:10px;margin:8px 0 0">Win and loss rates use wins + losses as the denominator. Draws and open trades are counted separately and excluded from those percentages.</p>`
+    : '<div class="empty">No trades recorded yet.</div>';
+}
+
 function renderAnalytics() {
   const r = resolved();
   const cache = new Map();
@@ -594,6 +638,7 @@ function renderAnalytics() {
   ).join('');
 
   renderDailyTradePerformance();
+  renderEntryCountPerformance();
   renderCount($('byCount'), r, cache);
 
   $('byCategory').innerHTML = [
@@ -642,7 +687,7 @@ function renderAnalytics() {
   const dims = [
     ['Currency pair', t => t.pair],
     ['Session', t => t.session],
-    ['Direction', t => t.direction],
+    ['Direction', t => displayDirection(t.direction)],
     ['Market condition', t => t.condition]
   ];
 
@@ -899,24 +944,23 @@ function renderAll() {
 }
 
 /* ---------- form ---------- */
-
 function nowLocalInput() {
   const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
   return d.toISOString().slice(0, 16);
-}
-
-function setTradeDirection(value) {
-  const direction = value === 'PUT' ? 'PUT' : 'CALL';
-  $('direction').value = direction;
-  document.querySelectorAll('[data-direction]').forEach(button => {
-    button.classList.toggle('active', button.dataset.direction === direction);
-  });
 }
 
 function setTradeResult(value) {
   $('result').value = value;
   document.querySelectorAll('[data-result]').forEach(button => {
     button.classList.toggle('active', button.dataset.result === value);
+  });
+}
+
+function setTradeDirection(value) {
+  const direction = displayDirection(value);
+  $('direction').value = direction;
+  document.querySelectorAll('[data-direction]').forEach(button => {
+    button.classList.toggle('active', button.dataset.direction === direction);
   });
 }
 
@@ -927,8 +971,9 @@ function clearForm() {
   $('editId').value = '';
   $('formTitle').textContent = 'Log a Trade';
   $('payout').value = state.settings.defaultPayout ?? 80;
-  setTradeDirection('CALL');
   setTradeResult('WIN');
+  setTradeDirection('BUY');
+  $('numberEntries').value = '1';
 
   state.pendingShots = [];
 
@@ -997,6 +1042,12 @@ async function saveTrade(e) {
     return showError('Storage is not available; cannot save.');
   }
 
+  const requestedEntries = Number($('numberEntries').value);
+  if (!Number.isInteger(requestedEntries) || requestedEntries < 1 || requestedEntries > 99) {
+    $('numberEntries').focus();
+    return showError('Number of entries must be a whole number from 1 to 99.');
+  }
+
   const id = $('editId').value || U.uid();
   const old = state.trades.find(t => t.id === id);
 
@@ -1031,7 +1082,7 @@ async function saveTrade(e) {
     pair: $('pair').value,
     date: $('tradeDate').value,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    direction: $('direction').value,
+    direction: storageDirection($('direction').value),
     result: $('result').value,
     risk: $('risk').value,
     payout: $('payout').value,
@@ -1050,6 +1101,9 @@ async function saveTrade(e) {
     updatedAt: Date.now(),
     reasonNames
   }, new Set(state.reasons.map(r => r.id)));
+
+  // Extra field is preserved by IndexedDB even though the v2 sanitizer predates it.
+  trade.numberEntries = Math.max(1, Math.min(99, Number.parseInt($('numberEntries').value, 10) || 1));
 
   try {
     await S.putTrade(trade);
@@ -1079,7 +1133,6 @@ function editTrade(id) {
 
   [
     'pair',
-    'direction',
     'result',
     'risk',
     'payout',
@@ -1094,8 +1147,9 @@ function editTrade(id) {
   ].forEach(k => {
     if (k !== 'result') $(k).value = t[k] ?? '';
   });
-  setTradeDirection(t.direction || 'CALL');
   setTradeResult(t.result || 'OPEN');
+  setTradeDirection(displayDirection(t.direction));
+  $('numberEntries').value = String(entryCount(t));
 
   $('tradeDate').value = t.date;
 
@@ -1292,7 +1346,8 @@ async function exportBackup() {
       '.json';
 
     a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   } catch (err) {
     showError('Export failed: ' + err.message);
   }
@@ -1307,7 +1362,7 @@ async function exportTradesCsv() {
   try {
     const cache = new Map();
     const headers = [
-      'Date and Time','Currency Pair','Direction','Result','Actual Entry Timeframe',
+      'Date and Time','Currency Pair','Direction','Number of Entries','Result','Actual Entry Timeframe',
       'Analysis Timeframes','Risk Amount','Payout Percent','Profit/Loss','Session',
       'Market Condition','Trade Category','Setup Quality','Execution Quality',
       'Reasons','Notes','Screenshot Count'
@@ -1315,7 +1370,7 @@ async function exportTradesCsv() {
     const rows = [...state.trades]
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .map(t => [
-        t.date, t.pair, t.direction, t.result, t.entryTimeframe || '',
+        t.date, t.pair, displayDirection(t.direction), entryCount(t), t.result, t.entryTimeframe || '',
         (t.timeframes || []).join(' + '), num(t.risk), num(t.payout), Number(pnl(t).toFixed(8)),
         t.session, t.condition, t.category, t.setupQuality ?? '', t.executionQuality ?? '',
         reasonsOf(t, cache).join(' + '), t.notes || '', (t.screenshots || []).length
@@ -1368,8 +1423,17 @@ async function importBackup(e) {
     ) {
       return;
     }
+      await S.importAll(parsed.data, { skipValidate: false });
 
-    await S.importAll(parsed.data, { skipValidate: false });
+    // The existing v2 importer sanitizes older trade fields. Reapply the
+    // newer entry-count field afterward without changing the database schema.
+    const importedCounts = new Map(
+      (parsed.data.trades || []).map(t => [t.id, entryCount(t)])
+    );
+    const restoredTrades = await S.getAllTrades();
+    await Promise.all(restoredTrades.map(t =>
+      S.putTrade({ ...t, numberEntries: importedCounts.get(t.id) || 1 })
+    ));
 
     await reloadState();
     renderAll();
@@ -1415,6 +1479,102 @@ function applyLightboxTransform() {
     `translate(${lbX}px,${lbY}px) scale(${lbScale})`;
 }
 
+/* ---------- screenshot text recognition (OCR only; no predictions) ---------- */
+
+let tesseractModulePromise = null;
+
+async function getTesseractModule() {
+  if (!tesseractModulePromise) {
+    tesseractModulePromise = import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
+  }
+  return tesseractModulePromise;
+}
+
+function parseRecognizedTradeText(raw) {
+  const text = String(raw || '').toUpperCase();
+  const found = {};
+  const pairMatch = text.match(/\b(EUR|USD|GBP|JPY|AUD|NZD|CAD|CHF|CNY|HKD|SGD|ZAR|TRY|MXN)\s*[/_-]?\s*(EUR|USD|GBP|JPY|AUD|NZD|CAD|CHF|CNY|HKD|SGD|ZAR|TRY|MXN)\b/);
+  if (pairMatch && pairMatch[1] !== pairMatch[2]) found.pair = pairMatch[1] + '/' + pairMatch[2];
+
+  if (/\b(PUT|SELL|LOWER)\b/.test(text)) found.direction = 'SELL';
+  else if (/\b(CALL|BUY|HIGHER)\b/.test(text)) found.direction = 'BUY';
+
+  const riskMatch = text.match(/(?:AMOUNT|INVESTMENT|TRADE\s*AMOUNT|STAKE)\s*[:：]?\s*[$€£]?\s*(\d+(?:[.,]\d{1,2})?)/);
+  if (riskMatch) found.risk = riskMatch[1].replace(',', '.');
+
+  const payoutMatch = text.match(/(?:PAYOUT|PROFIT|RETURN)\s*[:：]?\s*(\d+(?:[.,]\d+)?)\s*%/);
+  if (payoutMatch) found.payout = payoutMatch[1].replace(',', '.');
+
+  const tfMatch = text.match(/\b(1|2|3|5|10|15|30)\s*(MIN|M)\b|\b(1|2|4)\s*(HOUR|HR|H)\b/);
+  if (tfMatch) {
+    if (tfMatch[1]) found.entryTimeframe = tfMatch[1] + 'M';
+    else if (tfMatch[3]) found.entryTimeframe = tfMatch[3] + 'H';
+  }
+
+  const dateMatch = text.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+  if (dateMatch) {
+    const y = dateMatch[1], m = dateMatch[2].padStart(2, '0'), d = dateMatch[3].padStart(2, '0');
+    found.tradeDate = `${y}-${m}-${d}`;
+  }
+  return found;
+}
+
+async function recognizeScreenshot() {
+  const input = $('recognitionScreenshot');
+  const file = input?.files?.[0];
+  const status = $('recognitionStatus');
+  const textOutput = $('recognitionText');
+  if (!file) { status.textContent = 'Choose a screenshot first.'; return; }
+  if (!file.type.startsWith('image/')) { status.textContent = 'Please choose an image file.'; return; }
+
+  const button = $('recognizeScreenshot');
+  button.disabled = true;
+  button.textContent = 'Reading screenshot…';
+  status.textContent = 'Loading text recognition engine. The first use requires an internet connection.';
+  textOutput.textContent = 'Processing…';
+
+  try {
+    const mod = await getTesseractModule();
+    const worker = await mod.createWorker('eng');
+    let result;
+    try { result = await worker.recognize(file); }
+    finally { await worker.terminate(); }
+
+    const raw = result?.data?.text || '';
+    textOutput.textContent = raw || 'No readable text was found.';
+    const fields = parseRecognizedTradeText(raw);
+    const applied = [];
+
+    if (fields.pair) { $('pair').value = fields.pair; applied.push('pair'); }
+    if (fields.direction) { setTradeDirection(fields.direction); applied.push('direction'); }
+    if (fields.risk) { $('risk').value = fields.risk; applied.push('risk'); }
+    if (fields.payout) { $('payout').value = fields.payout; applied.push('payout'); }
+    if (fields.entryTimeframe && [...$('entryTimeframe').options].some(o => o.value === fields.entryTimeframe || o.textContent === fields.entryTimeframe)) { $('entryTimeframe').value = fields.entryTimeframe; applied.push('entry timeframe'); }
+    if (fields.tradeDate) {
+      const current = $('tradeDate').value || nowLocalInput();
+      $('tradeDate').value = fields.tradeDate + 'T' + current.slice(11, 16);
+      applied.push('date');
+    }
+
+    // Preserve the recognition screenshot with the trade unless already attached.
+    const data = await readFileAsDataURL(file);
+    if (U.isDataImage(data) && !state.pendingShots.some(s => s.name === file.name && s.data === data)) {
+      state.pendingShots.push({ name: file.name, data, tf: fields.entryTimeframe || '', reasonIds: [] });
+      renderShotMeta();
+    }
+
+    status.textContent = applied.length
+      ? 'Recognition finished. Suggested fields: ' + applied.join(', ') + '. Review every field before saving.'
+      : 'Text was extracted, but no supported trade fields could be confidently identified. Review the recognized text and fill the form manually.';
+  } catch (err) {
+    status.textContent = 'Recognition failed: ' + (err?.message || String(err)) + '. Check your internet connection and try again.';
+    showError('Screenshot recognition failed: ' + (err?.message || String(err)));
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Read Screenshot & Fill Trade Form';
+  }
+}
+
 /* ---------- event wiring ---------- */
 
 function bindEvents() {
@@ -1429,14 +1589,24 @@ function bindEvents() {
   });
 
   $('tradeForm').addEventListener('submit', saveTrade);
-  document.querySelectorAll('[data-direction]').forEach(button => {
-    button.addEventListener('click', () => setTradeDirection(button.dataset.direction));
-  });
   document.querySelectorAll('[data-result]').forEach(button => {
     button.addEventListener('click', () => setTradeResult(button.dataset.result));
   });
+  document.querySelectorAll('[data-direction]').forEach(button => {
+    button.addEventListener('click', () => setTradeDirection(button.dataset.direction));
+  });
   $('clearForm').addEventListener('click', clearForm);
   $('cancelEdit').addEventListener('click', clearForm);
+
+  $('recognitionScreenshot').addEventListener('change', () => {
+    const file = $('recognitionScreenshot').files?.[0];
+    const preview = $('recognitionPreview');
+    if (!file) { preview.style.display = 'none'; preview.removeAttribute('src'); return; }
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = 'block';
+    $('recognitionStatus').textContent = 'Screenshot selected. Tap Read Screenshot & Fill Trade Form.';
+  });
+  $('recognizeScreenshot').addEventListener('click', recognizeScreenshot);
 
   $('screenshots').addEventListener('change', async e => {
     const files = [...e.target.files];
@@ -1625,6 +1795,7 @@ function bindEvents() {
     if (e.key === 'Escape') closeLightbox();
   });
 }
+
 /* ---------- load storage ---------- */
 
 async function reloadState() {
@@ -1640,7 +1811,7 @@ async function reloadState() {
     S.getSettings()
   ]);
 
-  state.trades = trades || [];
+  state.trades = (trades || []).map(t => ({ ...t, numberEntries: entryCount(t) }));
 
   state.reasons = (reasons && reasons.length)
     ? reasons
@@ -1718,4 +1889,4 @@ window.JarvisApp = {
   deleteTrade,
   exportBackup,
   importBackup
-};
+};  
