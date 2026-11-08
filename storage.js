@@ -1,3 +1,4 @@
+
 'use strict';
 
 const DB_NAME = 'jarvis-journal';
@@ -73,7 +74,7 @@ function sanitizeTrade(t, reasonIdsValid) {
       if (typeof k === 'string') reasonNames[k] = safeStr(v, 200);
     }
   }
-  const result = ['WIN', 'LOSS', 'OPEN'].includes(t.result) ? t.result : 'OPEN';
+  const result = ['WIN', 'LOSS', 'DRAW', 'OPEN'].includes(t.result) ? t.result : 'OPEN';
   return {
     id: typeof t.id === 'string' && t.id ? t.id : uid(),
     pair: safeStr(t.pair, 40).trim().toUpperCase(),
@@ -91,6 +92,7 @@ function sanitizeTrade(t, reasonIdsValid) {
     executionQuality: t.executionQuality == null || t.executionQuality === '' ? null : clamp(num(t.executionQuality), 1, 10),
     reasonIds,
     timeframes,
+    entryTimeframe: safeStr(t.entryTimeframe, 12),
     screenshots,
     notes: safeStr(t.notes, 5000),
     mood: t.mood && typeof t.mood === 'object'
@@ -189,6 +191,11 @@ const Storage = {
   async putTransaction(t) {
     const tx = this.db.transaction('transactions', 'readwrite');
     tx.objectStore('transactions').put(t);
+    return txPromise(tx);
+  },
+  async deleteTransaction(id) {
+    const tx = this.db.transaction('transactions', 'readwrite');
+    tx.objectStore('transactions').delete(id);
     return txPromise(tx);
   },
 
