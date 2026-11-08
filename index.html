@@ -104,6 +104,11 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
 #lightbox.show{display:flex}
 #lightbox img{max-width:92vw;max-height:88vh;transform-origin:center;transition:transform .05s;user-select:none;-webkit-user-drag:none}
 #lbClose{position:absolute;top:14px;right:14px;background:#111f38;border:1px solid #33507a;color:#fff;width:44px;height:44px;border-radius:50%;font-size:20px}
+.ocr-panel{border:1px solid #285078;background:linear-gradient(145deg,#10243b,#0a1425);border-radius:12px;padding:11px;margin:10px 0}
+.ocr-preview{display:none;max-width:100%;max-height:180px;object-fit:contain;border:1px solid #30476c;border-radius:9px;margin-top:8px}
+.ocr-status{font-size:11px;color:#b9d7f5;margin-top:8px;white-space:pre-wrap}
+.ocr-text{max-height:140px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;color:#aebed4;background:#07101e;padding:8px;border-radius:8px}
+.ocr-review-note{font-size:11px;color:#ffe08a;margin-top:8px}
 @media(max-width:380px){.formgrid,.checkgrid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
@@ -131,7 +136,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
       <div class="hero-balance"><small>Account Balance</small><strong id="accountBalance">$0.00</strong><div class="trend" id="balanceChange">● Track your progress</div></div>
       <div class="stats" id="stats"></div>
       <div class="panel"><h3>Recent Trades</h3><div id="recent"></div></div>
-      <div class="panel"><h3>Performance Snapshot</h3><div id="snapshot" class="cards"></div></div>
+      <div class="panel"><h3>Performance Snapshot</h3><div class="cards" id="snapshot"></div></div>
       <div class="panel"><h3>Reason Count Performance</h3><div id="reasonCount"></div></div>
       <div class="panel"><h3>Top Setup</h3><div id="topSetup"></div></div>
       <div class="panel"><h3>Best Currency Pair</h3><div id="bestPair"></div></div>
@@ -145,10 +150,10 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
         <div class="formgrid">
           <div class="field"><label>Currency pair</label><input id="pair" placeholder="EUR/USD" required maxlength="40"></div>
           <div class="field"><label>Date and time</label><input id="tradeDate" type="datetime-local" required></div>
-          <div class="field"><label>Direction</label><input type="hidden" id="direction" value="CALL">
+          <div class="field"><label>Direction</label><input type="hidden" id="direction" value="BUY">
             <div class="direction-picker" id="directionPicker" role="group" aria-label="Trade direction">
-              <button type="button" class="direction-choice buy active" data-direction="CALL">BUY</button>
-              <button type="button" class="direction-choice sell" data-direction="PUT">SELL</button>
+              <button type="button" class="direction-choice buy active" data-direction="BUY">BUY</button>
+              <button type="button" class="direction-choice sell" data-direction="SELL">SELL</button>
             </div>
           </div>
           <div class="field"><label>Trade result</label><input id="result" type="hidden" value="WIN">
@@ -159,7 +164,8 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
             </div>
             <button type="button" class="result-choice open" data-result="OPEN" style="margin-top:6px;width:100%">OPEN / UNRESOLVED</button>
           </div>
-          <div class="field"><label>Amount risked</label><input id="risk" type="number" min="0" step="0.01" placeholder="10"></div>
+          <div class="field"><label>Amount risked (total for this setup)</label><input id="risk" type="number" min="0" step="0.01" placeholder="10"></div>
+          <div class="field"><label>Number of entries</label><input id="numberEntries" type="number" min="1" max="99" step="1" value="1"><small class="muted">Count separate entries for this one setup. Total risk is recorded separately.</small></div>
           <div class="field"><label>Payout (%)</label><input id="payout" type="number" min="0" step="0.1" value="80"></div>
           <div class="field"><label>Confidence (1–10)</label><input id="confidence" type="number" min="1" max="10" placeholder="7"></div>
           <div class="field"><label>Session</label><select id="session"><option>London</option><option>New York</option><option>Asian</option><option>Sydney</option><option>London/New York overlap</option><option>Custom</option></select></div>
@@ -168,6 +174,16 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
           <div class="field"><label>Actual entry timeframe</label><select id="entryTimeframe"><option value="">Select entry timeframe</option><option>1M</option><option>2M</option><option>3M</option><option>5M</option><option>10M</option><option>15M</option><option>30M</option><option>1H</option><option>2H</option><option>4H</option><option>1D</option></select></div>
           <div class="field"><label>Setup quality (1–10)</label><input id="setupQuality" type="number" min="1" max="10"></div>
           <div class="field"><label>Execution quality (1–10)</label><input id="executionQuality" type="number" min="1" max="10"></div>
+        </div>
+        <div class="ocr-panel">
+          <h3 style="margin:0 0 6px">Pocket Option Screenshot Recognition</h3>
+          <p class="muted" style="font-size:11px;margin:0 0 8px">Jarvis uses on-device text recognition (OCR) to suggest visible trade details. It does not predict trades or give trading signals. Check every suggested value before saving.</p>
+          <div class="field"><label for="recognitionScreenshot">Choose a Pocket Option screenshot</label><input id="recognitionScreenshot" type="file" accept="image/*"></div>
+          <img id="recognitionPreview" class="ocr-preview" alt="Screenshot selected for text recognition">
+          <button class="btn primary" id="recognizeScreenshot" type="button" style="width:100%">Read Screenshot &amp; Fill Trade Form</button>
+          <div id="recognitionStatus" class="ocr-status" aria-live="polite">Choose a screenshot, then run recognition. The extracted values will be placed in the editable trade fields below.</div>
+          <div class="ocr-review-note">Important: OCR can misread numbers or direction. Review the pair, BUY/SELL, amount, payout, timeframe, and date before saving.</div>
+          <details style="margin-top:8px"><summary class="muted" style="font-size:11px;cursor:pointer">Show recognized text</summary><pre id="recognitionText" class="ocr-text">No text recognized yet.</pre></details>
         </div>
         <div class="field"><label>Reasons (select all that apply)</label><div id="reasonChecks" class="checkgrid"></div></div>
         <div class="field"><label>Timeframes used</label><div id="tfChecks" class="checkgrid"></div></div>
@@ -182,7 +198,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
         <p class="muted" style="font-size:11px;margin:0 0 8px">Narrow your history with the filters. You can combine filters, or use the search box for a pair, reason, or word from your notes.</p>
         <div class="filter-grid">
           <div class="field"><label for="historyPairFilter">Currency pair</label><select id="historyPairFilter"><option value="ALL">All pairs</option></select></div>
-          <div class="field"><label for="historyDirectionFilter">Direction</label><select id="historyDirectionFilter"><option value="ALL">All directions</option><option value="CALL">CALL / Buy</option><option value="PUT">PUT / Sell</option></select></div>
+          <div class="field"><label for="historyDirectionFilter">Direction</label><select id="historyDirectionFilter"><option value="ALL">All directions</option><option value="BUY">BUY</option><option value="SELL">SELL</option></select></div>
           <div class="field"><label for="historyEntryTfFilter">Actual entry timeframe</label><select id="historyEntryTfFilter"><option value="ALL">All entry timeframes</option><option>1M</option><option>2M</option><option>3M</option><option>5M</option><option>10M</option><option>15M</option><option>30M</option><option>1H</option><option>2H</option><option>4H</option><option>1D</option><option value="NONE">Not recorded</option></select></div>
           <div class="field"><label for="historySessionFilter">Trading session</label><select id="historySessionFilter"><option value="ALL">All sessions</option><option>London</option><option>New York</option><option>Asian</option><option>Sydney</option><option>London/New York overlap</option><option>Custom</option></select></div>
           <div class="field"><label for="historyFromDate">From date</label><input id="historyFromDate" type="date"></div>
@@ -196,6 +212,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
     <section id="analytics" class="section">
       <div class="panel"><h3>Analytics Overview</h3><div class="cards" id="analyticsTop"></div></div>
       <div class="panel"><h3>Daily Performance by Number of Trades</h3><p class="muted">Compare results on days when you take different numbers of trades. Open trades count toward the daily trade total; win rate and P/L use completed trades only.</p><div id="dailyTradePerformance"></div></div>
+      <div class="panel"><h3>Performance by Number of Entries</h3><p class="muted">Each setup counts as one trade, even if you entered more than once. Win/loss percentages use decisive outcomes (wins + losses); draws and open trades are shown separately.</p><div id="entryCountPerformance"></div></div>
       <div class="panel"><h3>Win Rate by Number of Reasons</h3><div id="byCount"></div></div>
       <div class="panel"><h3>Single vs Multi-Timeframe</h3><div id="byCategory"></div></div>
       <div class="panel"><h3>Exact Reason Combination Performance</h3><div id="byCombo"></div></div>
