@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jarvis Mockup</title>
+<style>
+  :root {
+    --bg: #02050a;
+    --panel: rgba(16, 24, 43, 0.7);
+    --line: rgba(38, 54, 83, 0.8);
+    --blue: #087cff;
+    --cyan: #20baff;
+    --green: #00df8b;
+    --red: #ff405b;
+    --muted: #8b9bb4;
+    --text: #f4f7ff;
+    --glow-blue: 0 0 15px rgba(8, 124, 255, 0.3);
+    --glow-green: 0 0 15px rgba(0, 223, 139, 0.3);
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 50% 0%, #0d1b35 0%, #02050a 60%);
+    color: var(--text);
+    font: 14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    min-height: 100vh;
+    padding-bottom: 88px;
+  }
+  .app { max-width: 430px; margin: auto; padding: 12px 12px 24px; }
+  
+  .brand {
+    display: flex; align-items: center; gap: 12px; padding: 4px 6px 16px;
+    border-bottom: 1px solid var(--line); margin-bottom: 16px;
+  }
+  .brand .logo {
+    flex: 0 0 58px; width: 58px; height: 58px;
+    background: #1a2b4c; border-radius: 50%; border: 2px solid var(--cyan);
+    display: flex; align-items: center; justify-content: center; font-size: 28px;
+    filter: drop-shadow(0 0 10px rgba(32, 186, 255, 0.6));
+  }
+  .brand h1 { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: 0.5px; text-shadow: 0 0 10px rgba(32, 186, 255, 0.4); }
+  .brand small { display: block; font-size: 11px; color: var(--cyan); margin-top: 2px; letter-spacing: 1px; text-transform: uppercase; }
+
+  .top { display: flex; align-items: center; justify-content: space-between; margin: 0 0 16px; padding: 0 6px; }
+  .top h2 { margin: 0; font-size: 22px; font-weight: 800; }
+  .top p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+  .hero-balance {
+    background: linear-gradient(135deg, rgba(13, 27, 48, 0.9), rgba(7, 59, 54, 0.9));
+    border: 1px solid rgba(23, 110, 105, 0.8); border-radius: 16px; padding: 18px;
+    margin-bottom: 12px; position: relative; overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 30px rgba(0, 0, 0, 0.5);
+  }
+  .hero-balance small { color: #aebbd0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  .hero-balance strong { display: block; font-size: 34px; margin: 6px 0; line-height: 1.1; font-weight: 800; text-shadow: 0 0 20px rgba(0, 223, 139, 0.3); }
+  .hero-balance .trend { color: var(--green); font-weight: 700; font-size: 13px; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 12px 8px; min-height: 80px; text-align: center; backdrop-filter: blur(10px);
+  }
+  .stat label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat strong { display: block; font-size: 20px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 800; }
+  
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); padding: 16px; margin-bottom: 12px;
+    position: relative; overflow: hidden; backdrop-filter: blur(10px);
+  }
+  .panel h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: #fff; }
+
+  .nav {
+    position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); bottom: 0;
+    width: min(430px, 100%); display: grid; grid-template-columns: repeat(6, 1fr);
+    padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
+    background: rgba(3, 7, 17, 0.85); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line); box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.6);
+  }
+  .nav button {
+    border: 0; background: transparent; text-align: center; padding: 6px 2px; border-radius: 12px;
+    color: var(--muted); font-size: 9px; min-height: 53px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px;
+  }
+  .nav button .ico { font-size: 20px; line-height: 21px; color: var(--muted); }
+  .nav button.active { background: rgba(8, 124, 255, 0.15); color: var(--cyan); }
+  .nav button.active .ico { color: var(--cyan); text-shadow: 0 0 12px var(--cyan); transform: scale(1.1); }
+  
+  .blue { color: var(--cyan); }
+  .green { color: var(--green); }
+  .pill { display: inline-block; padding: 4px 10px; border-radius: 99px; background: rgba(20, 43, 71, 0.8); color: var(--cyan); font-size: 10px; font-weight: 800; letter-spacing: 0.5px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="brand">
+    <div class="logo">🦾</div>
+    <div>
+      <h1>JARVIS</h1>
+      <small>Track · Analyze · Improve</small>
+    </div>
+  </header>
+
+  <header class="top">
+    <div>
+      <h2>Dashboard</h2>
+      <p>Your trading performance at a glance.</p>
+    </div>
+    <span class="pill">JOURNAL</span>
+  </header>
+
+  <div class="hero-balance">
+    <small>Account Balance</small>
+    <strong>$1,240.50</strong>
+    <div class="trend">▲ +$340.50 since starting balance</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <label>Resolved</label>
+      <strong>42</strong>
+    </div>
+    <div class="stat">
+      <label>Win Rate</label>
+      <strong class="blue">68.2%</strong>
+    </div>
+    <div class="stat">
+      <label>Trading P/L</label>
+      <strong class="green">+$340</strong>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Performance Snapshot</h3>
+    <div style="color: var(--muted); font-size: 12px; text-align: center; padding: 20px;">
+      (Recent trades table will go here)
+    </div>
+  </div>
+</div>
+
+<nav class="nav">
+  <button class="active"><span class="ico">⌂</span>Dashboard</button>
+  <button><span class="ico">＋</span>Log Trade</button>
+  <button><span class="ico">◷</span>History</button>
+  <button><span class="ico">◎</span>Setups</button>
+  <button><span class="ico">▥</span>Analytics</button>
+  <button><span class="ico">⚙</span>Settings</button>
+</nav>
+
+</body>
+</html>
