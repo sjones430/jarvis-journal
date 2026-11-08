@@ -444,7 +444,8 @@ function renderMulti() {
             <tr>
               <th>Date</th>
               <th>Pair</th>
-              <th>Timeframes</th>
+              <th>Entry TF</th>
+              <th>Analysis timeframes</th>
               <th>Reasons</th>
               <th>Screenshots</th>
               <th>Result</th>
@@ -459,6 +460,7 @@ function renderMulti() {
                 `<tr>
                   <td>${esc(new Date(t.date).toLocaleString())}</td>
                   <td>${esc(t.pair)}</td>
+                  <td>${esc(t.entryTimeframe || 'Not recorded')}</td>
                   <td>${esc((t.timeframes || []).join(' + '))}</td>
                   <td>${reasonsOf(t, cache).length}</td>
                   <td>${renderScreenshotThumbs(t)}</td>
@@ -495,6 +497,78 @@ function avgOf(a, result) {
     : 0;
 }
 
+function renderDailyTradePerformance() {
+  const days = new Map();
+
+  state.trades.forEach(t => {
+    const date = String(t.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    if (!days.has(date)) days.set(date, []);
+    days.get(date).push(t);
+  });
+
+  const groups = new Map([
+    ['1 trade', []],
+    ['2 trades', []],
+    ['3 trades', []],
+    ['4 trades', []],
+    ['5+ trades', []]
+  ]);
+
+  days.forEach(trades => {
+    const count = trades.length;
+    const label = count >= 5 ? '5+ trades' : `${count} ${count === 1 ? 'trade' : 'trades'}`;
+    groups.get(label).push(trades);
+  });
+
+  const rows = [...groups.entries()]
+    .filter(([, dayGroups]) => dayGroups.length)
+    .map(([label, dayGroups]) => {
+      const completed = dayGroups.flat().filter(t =>
+        t.result === 'WIN' || t.result === 'LOSS'
+      );
+      const wins = completed.filter(t => t.result === 'WIN').length;
+      const totalPL = completed.reduce((sum, t) => sum + pnl(t), 0);
+      const avgDailyPL = totalPL / dayGroups.length;
+      const tradeCount = dayGroups.reduce((sum, day) => sum + day.length, 0);
+
+      return {
+        label,
+        days: dayGroups.length,
+        tradeCount,
+        resolvedCount: completed.length,
+        winRate: completed.length ? wins / completed.length * 100 : 0,
+        avgDailyPL,
+        totalPL
+      };
+    });
+
+  const target = $('dailyTradePerformance');
+  if (!target) return;
+
+  target.innerHTML = rows.length
+    ? `<div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th>Trades/day</th><th>Days</th><th>Total trades</th>
+            <th>Resolved</th><th>Win rate</th><th>Avg daily P/L</th><th>Total P/L</th>
+          </tr></thead>
+          <tbody>${rows.map(r => `
+            <tr>
+              <td>${esc(r.label)}</td>
+              <td>${r.days}</td>
+              <td>${r.tradeCount}</td>
+              <td>${r.resolvedCount}</td>
+              <td>${r.resolvedCount ? r.winRate.toFixed(1) + '%' : '—'}</td>
+              <td class="${r.avgDailyPL >= 0 ? 'green' : 'red'}">${money(r.avgDailyPL)}</td>
+              <td class="${r.totalPL >= 0 ? 'green' : 'red'}">${money(r.totalPL)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`
+    : '<div class="empty">Log trades on different days to compare daily performance.</div>';
+}
+
 function renderAnalytics() {
   const r = resolved();
   const cache = new Map();
@@ -507,6 +581,7 @@ function renderAnalytics() {
     `<div class="mini"><span class="muted">${esc(l)}</span><b>${esc(v)}</b></div>`
   ).join('');
 
+  renderDailyTradePerformance();
   renderCount($('byCount'), r, cache);
 
   $('byCategory').innerHTML = [
@@ -607,7 +682,12 @@ function renderAnalytics() {
     )
   );
 
-  $('timeframeStats').innerHTML = Object.keys(tf).length
+  const entryTf = {};
+  r.forEach(t => {
+    if (t.entryTimeframe) (entryTf[t.entryTimeframe] ??= []).push(t);
+  });
+
+  const analysisTfHtml = Object.keys(tf).length
     ? Object.entries(tf)
         .sort((a, b) => TIMEFRAMES.indexOf(a[0]) - TIMEFRAMES.indexOf(b[0]))
         .map(([k, a]) =>
@@ -616,8 +696,24 @@ function renderAnalytics() {
             <b>${winRate(a).toFixed(1)}%</b>
           </div>`
         ).join('')
-    : '<span class="muted">No timeframe data yet.</span>';
+    : '<span class="muted">No analysis timeframe data yet.</span>';
 
+  const entryTfHtml = Object.keys(entryTf).length
+    ? Object.entries(entryTf)
+        .sort((a, b) => TIMEFRAMES.indexOf(a[0]) - TIMEFRAMES.indexOf(b[0]))
+        .map(([k, a]) =>
+          `<div class="row between" style="padding:6px 0">
+            <span>${esc(k)} · ${a.length} entries</span>
+            <b>${winRate(a).toFixed(1)}%</b>
+          </div>`
+        ).join('')
+    : '<span class="muted">No actual entry timeframe data yet.</span>';
+
+  $('timeframeStats').innerHTML =
+    '<h4>Analysis timeframes</h4>' + analysisTfHtml +
+    '<hr style="border-color:#20344d;margin:12px 0">' +
+    '<h4>Actual entry timeframe</h4>' + entryTfHtml;
+    
   const avgRating = key => {
     const a = r.filter(t => Number(t[key]) > 0);
 
@@ -899,6 +995,7 @@ async function saveTrade(e) {
     session: $('session').value,
     condition: $('condition').value,
     category: $('category').value,
+    entryTimeframe: $('entryTimeframe').value,
     setupQuality: $('setupQuality').value,
     executionQuality: $('executionQuality').value,
     reasonIds,
@@ -946,6 +1043,7 @@ function editTrade(id) {
     'session',
     'condition',
     'category',
+    'entryTimeframe',
     'setupQuality',
     'executionQuality',
     'notes'
@@ -973,8 +1071,8 @@ function editTrade(id) {
     : [];
 
   renderShotMeta();
-}
-
+              }
+    
 async function deleteTrade(id) {
   if (!confirm('Delete this trade and its screenshots?')) return;
 
@@ -1518,3 +1616,4 @@ window.JarvisApp = {
   exportBackup,
   importBackup
 };
+
