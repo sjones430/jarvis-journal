@@ -1,3 +1,4 @@
+
 'use strict';
 
 const DEFAULT_REASONS = [
@@ -7,23 +8,17 @@ const DEFAULT_REASONS = [
   "Supply","Demand","OrderBlock (OB)","Marubozu candle","Third Touch Breakout (3TBO)",
   "Gap Up/Gap Down","ABC break","Round Number","Closed on Support","Closed on Resistance"
 ];
-
 const TIMEFRAMES = ["1M","2M","3M","5M","10M","15M","30M","1H","2H","4H","1D"];
-
 const DECREASE_ADJUSTMENT_MARKER = '[JARVIS_ADJUSTMENT_DECREASE]';
+const RISK_MODE = 'per-entry-v1';
 
 const S = window.JarvisStorage;
 const U = window.JarvisUtil;
 const { num, clamp, safeStr } = U;
-
 const $ = id => document.getElementById(id);
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({
-  '&':'&amp;',
-  '<':'&lt;',
-  '>':'&gt;',
-  '"':'&quot;',
-  "'":'&#39;'
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
 }[c]));
 
 const state = {
@@ -41,11 +36,10 @@ const state = {
   writable: false
 };
 
-/* ---------- helpers ---------- */
+/* ---------- core helpers ---------- */
 
 const money = n => {
   const v = Number.isFinite(Number(n)) ? Number(n) : 0;
-
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
@@ -56,22 +50,29 @@ const money = n => {
   }
 };
 
-const pnl = t => {
-  if (t.result === 'WIN') {
-    return num(t.risk) * clamp(num(t.payout), 0, 1000) / 100;
-  }
+function entryCount(trade) {
+  const n = Number.parseInt(trade?.numberEntries, 10);
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 99) : 1;
+}
 
-  if (t.result === 'LOSS') {
-    return -clamp(num(t.risk), 0, 1e9);
-  }
+// New records store risk PER ENTRY. Old records store the historical TOTAL risk.
+function totalRisk(t) {
+  const risk = Math.max(0, num(t?.risk));
+  return t?.riskMode === RISK_MODE
+    ? risk * entryCount(t)
+    : risk;
+}
 
+function pnl(t) {
+  const risk = totalRisk(t);
+  if (t.result === 'WIN') return risk * clamp(num(t.payout), 0, 1000) / 100;
+  if (t.result === 'LOSS') return -risk;
   return 0;
-};
+}
 
 const resolved = () =>
   state.trades.filter(t => ['WIN', 'LOSS', 'DRAW'].includes(t.result));
 
-// Draws are completed trades, but are excluded from the win-rate denominator.
 const winRate = arr => {
   const decisive = arr.filter(t => t.result === 'WIN' || t.result === 'LOSS');
   return decisive.length
@@ -79,10 +80,8 @@ const winRate = arr => {
     : 0;
 };
 
-const reasonById = id =>
-  state.reasons.find(r => r.id === id);
+const reasonById = id => state.reasons.find(r => r.id === id);
 
-// Legacy database values remain CALL/PUT; the interface consistently shows BUY/SELL.
 function displayDirection(value) {
   const v = String(value || '').toUpperCase();
   return v === 'PUT' || v === 'SELL' ? 'SELL' : 'BUY';
@@ -92,25 +91,15 @@ function storageDirection(value) {
   return displayDirection(value) === 'SELL' ? 'PUT' : 'CALL';
 }
 
-function entryCount(trade) {
-  const n = Number.parseInt(trade?.numberEntries, 10);
-  return Number.isFinite(n) && n >= 1 ? Math.min(n, 99) : 1;
-}
-
 const reasonsOf = (t, cache) => {
   if (cache && cache.has(t.id)) return cache.get(t.id);
-
   const names = (t.reasonIds || []).map(id => {
     const live = reasonById(id);
-
     if (live) return live.name;
     if (t.reasonNames && t.reasonNames[id]) return t.reasonNames[id];
-
     return 'Archived reason';
   });
-
   if (cache) cache.set(t.id, names);
-
   return names;
 };
 
@@ -118,48 +107,34 @@ const sampleLabel = n =>
   n < 10 ? 'Insufficient sample' :
   n < 30 ? 'Preliminary' :
   n < 50 ? 'Developing' :
-  n < 100 ? 'Stronger evidence' :
-  'Larger sample';
+  n < 100 ? 'Stronger evidence' : 'Larger sample';
 
-/* ---------- transaction helpers ---------- */
+/* ---------- transactions ---------- */
 
 function isDecreaseAdjustment(t) {
-  return t &&
-    t.type === 'Adjustment' &&
+  return t && t.type === 'Adjustment' &&
     String(t.note || '').startsWith(DECREASE_ADJUSTMENT_MARKER);
 }
 
 function transactionEffect(t) {
   const amount = Math.abs(num(t.amount));
-
-  if (t.type === 'Withdrawal' || isDecreaseAdjustment(t)) {
-    return -amount;
-  }
-
-  return amount;
+  return t.type === 'Withdrawal' || isDecreaseAdjustment(t) ? -amount : amount;
 }
 
 function transactionDisplayType(t) {
-  return isDecreaseAdjustment(t)
-    ? 'Adjustment (Decrease)'
-    : t.type;
+  return isDecreaseAdjustment(t) ? 'Adjustment (Decrease)' : t.type;
 }
 
 function transactionDisplayNote(t) {
-  return String(t.note || '')
-    .replace(DECREASE_ADJUSTMENT_MARKER, '')
-    .trim();
+  return String(t.note || '').replace(DECREASE_ADJUSTMENT_MARKER, '').trim();
 }
 
 function ensureAdjustmentOptions() {
   const select = $('txType');
   if (!select) return;
-
-  const exists = [...select.options].some(
-    o => o.value === 'Adjustment (Decrease)' ||
-         o.textContent === 'Adjustment (Decrease)'
+  const exists = [...select.options].some(o =>
+    o.value === 'Adjustment (Decrease)' || o.textContent === 'Adjustment (Decrease)'
   );
-
   if (!exists) {
     const option = document.createElement('option');
     option.value = 'Adjustment (Decrease)';
@@ -168,41 +143,25 @@ function ensureAdjustmentOptions() {
   }
 }
 
-/* ---------- screenshot helpers ---------- */
+/* ---------- screenshots: manual attachments only ---------- */
 
 function renderScreenshotThumbs(t) {
   const shots = Array.isArray(t.screenshots) ? t.screenshots : [];
-
-  if (!shots.length) {
-    return '<span class="muted">—</span>';
-  }
-
-  return `<div class="thumbs" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+  if (!shots.length) return '<span class="muted">—</span>';
+  return `<div class="thumbs">
     ${shots.map((s, i) => `
-      <img
-        data-lightbox
-        src="${esc(s.data)}"
-        alt="Trade screenshot ${i + 1}"
-        title="${esc(
-          (s.tf || 'Unspecified timeframe') +
+      <img data-lightbox src="${esc(s.data)}" alt="Trade screenshot ${i + 1}"
+        title="${esc((s.tf || 'Unspecified timeframe') +
           (s.reasonIds?.length ? ' · ' + s.reasonIds.map(id =>
             reasonById(id)?.name || t.reasonNames?.[id] || 'Archived reason'
-          ).join(', ') : '')
-        )}"
-        style="width:58px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #263653;cursor:zoom-in"
-      >
+          ).join(', ') : ''))}">
     `).join('')}
   </div>`;
 }
 
 function showError(msg) {
   const b = $('errorBanner');
-
-  if (!b) {
-    console.error(msg);
-    return;
-  }
-
+  if (!b) { console.error(msg); return; }
   b.textContent = msg;
   b.classList.add('show');
 }
@@ -214,7 +173,6 @@ function clearError() {
 
 function setWritable(v) {
   state.writable = v;
-
   document.querySelectorAll(
     '#tradeForm button[type=submit], #saveSettings, #exportBtn, #reasonForm button, #txForm button'
   ).forEach(b => {
@@ -235,40 +193,27 @@ const TITLES = {
 };
 
 function nav(page) {
-  document.querySelectorAll('.section').forEach(x =>
-    x.classList.remove('active')
-  );
-
+  document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
   const sec = $(page);
   if (sec) sec.classList.add('active');
-
   document.querySelectorAll('#nav button').forEach(b =>
     b.classList.toggle('active', b.dataset.page === page)
   );
-
   const [h, p] = TITLES[page] || ['Jarvis', ''];
-
   if ($('pageTitle')) $('pageTitle').textContent = h;
   if ($('pageSub')) $('pageSub').textContent = p;
 }
 
-/* ---------- reason & timeframe checks ---------- */
+/* ---------- reason and timeframe checkboxes ---------- */
 
 function renderChecks() {
   const active = state.reasons.filter(r => r.active);
-
   $('reasonChecks').innerHTML = active.map(r =>
-    `<label class="check">
-      <input type="checkbox" name="reason" value="${esc(r.id)}">
-      ${esc(r.name)}
-    </label>`
+    `<label class="check"><input type="checkbox" name="reason" value="${esc(r.id)}">${esc(r.name)}</label>`
   ).join('') || '<span class="muted">No active reasons. Add some in Settings.</span>';
 
   $('tfChecks').innerHTML = TIMEFRAMES.map(t =>
-    `<label class="check">
-      <input type="checkbox" name="tf" value="${esc(t)}">
-      ${esc(t)}
-    </label>`
+    `<label class="check"><input type="checkbox" name="tf" value="${esc(t)}">${esc(t)}</label>`
   ).join('');
 }
 
@@ -288,37 +233,26 @@ function renderDashboard() {
   ];
 
   $('stats').innerHTML = statsData.map(([label, val, cls]) =>
-    `<div class="stat">
-      <label>${esc(label)}</label>
-      <strong class="${cls}">${esc(val)}</strong>
-    </div>`
+    `<div class="stat"><label>${esc(label)}</label><strong class="${cls}">${esc(val)}</strong></div>`
   ).join('');
 
   const cache = new Map();
-
   const recent = [...state.trades]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 6);
 
   $('recent').innerHTML = recent.length
-    ? `<div class="tablewrap">
-        <table>
-          <thead>
-            <tr><th>Pair</th><th>Result</th><th>Reasons</th><th>P/L</th></tr>
-          </thead>
-          <tbody>
-            ${recent.map(t =>
-              `<tr>
-                <td>${esc(t.pair)}</td>
-                <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
-                <td>${reasonsOf(t, cache).length}</td>
-                <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
-              </tr>`
-            ).join('')}
-          </tbody>
-        </table>
-      </div>`
-    : `<div class="empty">No trades yet. Log your first trade to begin building your journal.</div>`;
+    ? `<div class="tablewrap"><table>
+        <thead><tr><th>Pair</th><th>Result</th><th>Reasons</th><th>P/L</th></tr></thead>
+        <tbody>${recent.map(t => `
+          <tr>
+            <td>${esc(t.pair)}</td>
+            <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
+            <td>${reasonsOf(t, cache).length}</td>
+            <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
+          </tr>`).join('')}
+        </tbody></table></div>`
+    : '<div class="empty">No trades yet. Log your first trade to begin building your journal.</div>';
 
   $('snapshot').innerHTML =
     `<div class="mini"><span class="muted">Winning trades</span><b class="green">${wins}</b></div>` +
@@ -328,55 +262,44 @@ function renderDashboard() {
   renderCount($('reasonCount'), r, cache);
 
   const pairMap = {};
-
   r.forEach(t => (pairMap[t.pair] ??= []).push(t));
-
-  const best = Object.entries(pairMap)
-    .sort((a, b) => winRate(b[1]) - winRate(a[1]))[0];
+  const best = Object.entries(pairMap).sort((a, b) => winRate(b[1]) - winRate(a[1]))[0];
 
   $('bestPair').innerHTML = best
-    ? `<b>${esc(best[0])}</b>
-       <div class="muted">${winRate(best[1]).toFixed(1)}% win rate · ${best[1].length} trades · ${sampleLabel(best[1].length)}</div>`
+    ? `<b>${esc(best[0])}</b><div class="muted">${winRate(best[1]).toFixed(1)}% win rate · ${best[1].length} trades · ${sampleLabel(best[1].length)}</div>`
     : '<span class="muted">No pair data yet.</span>';
 
   const comboMap = {};
-
   r.forEach(t => {
     const k = [...reasonsOf(t, cache)].sort().join(' + ') || 'No reasons';
     (comboMap[k] ??= []).push(t);
   });
-
-  const top = Object.entries(comboMap)
-    .sort((a, b) => winRate(b[1]) - winRate(a[1]))[0];
+  const top = Object.entries(comboMap).sort((a, b) => winRate(b[1]) - winRate(a[1]))[0];
 
   $('topSetup').innerHTML = top
-    ? `<b>${esc(top[0])}</b>
-       <div class="muted">${winRate(top[1]).toFixed(1)}% win rate · ${top[1].length} trades · ${sampleLabel(top[1].length)}</div>`
+    ? `<b>${esc(top[0])}</b><div class="muted">${winRate(top[1]).toFixed(1)}% win rate · ${top[1].length} trades · ${sampleLabel(top[1].length)}</div>`
     : '<span class="muted">No setup data yet.</span>';
 
   updateBalance();
 }
 
-function renderCount(elNode, arr, cache) {
+function renderCount(elNode, arr) {
   const groups = {};
-
   arr.forEach(t => {
     const n = (t.reasonIds || []).length;
     (groups[n] ??= []).push(t);
   });
-
   const keys = Object.keys(groups).sort((a, b) => a - b);
 
   elNode.innerHTML = keys.length
-    ? keys.map(k =>
-        `<div style="margin:12px 0">
+    ? keys.map(k => `
+        <div style="margin:12px 0">
           <div class="row between">
             <span>${k} reason${k === '1' ? '' : 's'} · ${groups[k].length} trades</span>
             <b>${winRate(groups[k]).toFixed(1)}%</b>
           </div>
           <div class="bar"><i style="width:${winRate(groups[k])}%"></i></div>
-        </div>`
-      ).join('')
+        </div>`).join('')
     : '<div class="empty">No resolved trades to analyze yet.</div>';
 }
 
@@ -392,7 +315,6 @@ function renderHistory() {
   const to = $('historyToDate')?.value || '';
   const cache = new Map();
 
-  // Keep the pair list synchronized with the trades without resetting the user's choice.
   const pairSelect = $('historyPairFilter');
   if (pairSelect) {
     const selected = pairSelect.value || 'ALL';
@@ -411,38 +333,33 @@ function renderHistory() {
     .filter(t => session === 'ALL' || t.session === session)
     .filter(t => !from || String(t.date || '').slice(0, 10) >= from)
     .filter(t => !to || String(t.date || '').slice(0, 10) <= to)
-    .filter(t => !q || [t.pair, t.notes, ...reasonsOf(t, cache)]
-      .join(' ').toLowerCase().includes(q))
+    .filter(t => !q || [t.pair, t.notes, ...reasonsOf(t, cache)].join(' ').toLowerCase().includes(q))
     .sort((a, b) => b.createdAt - a.createdAt);
 
   $('historyTable').innerHTML = arr.length
-    ? `<div class="tablewrap">
-        <table>
-          <thead><tr>
-            <th>Date</th><th>Pair</th><th>Dir</th><th>Entries</th><th>Entry TF</th>
-            <th>Result</th><th>Reasons</th><th>Cat</th><th>Screenshots</th><th>P/L</th><th>Actions</th>
-          </tr></thead>
-          <tbody>${arr.map(t =>
-            `<tr>
-              <td>${esc(new Date(t.date).toLocaleString())}</td>
-              <td>${esc(t.pair)}</td>
-              <td>${esc(displayDirection(t.direction))}</td>
-              <td>${entryCount(t)}</td>
-              <td>${esc(t.entryTimeframe || '—')}</td>
-              <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
-              <td>${reasonsOf(t, cache).length}</td>
-              <td>${t.category === 'Multi-timeframe' ? 'Multi-TF' : 'Single-TF'}</td>
-              <td>${renderScreenshotThumbs(t)}</td>
-              <td class="${pnl(t) > 0 ? 'green' : pnl(t) < 0 ? 'red' : ''}">${money(pnl(t))}</td>
-              <td>
-                <button class="btn small" data-action="edit" data-id="${esc(t.id)}">✎</button>
-                <button class="btn small danger" data-action="delete" data-id="${esc(t.id)}">×</button>
-              </td>
-            </tr>`
-          ).join('')}
-          </tbody>
-        </table>
-      </div>`
+    ? `<div class="tablewrap"><table>
+        <thead><tr>
+          <th>Date</th><th>Pair</th><th>Dir</th><th>Entries</th><th>Entry TF</th>
+          <th>Result</th><th>Reasons</th><th>Cat</th><th>Screenshots</th><th>P/L</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${arr.map(t => `
+          <tr>
+            <td>${esc(new Date(t.date).toLocaleString())}</td>
+            <td>${esc(t.pair)}</td>
+            <td>${esc(displayDirection(t.direction))}</td>
+            <td>${entryCount(t)}</td>
+            <td>${esc(t.entryTimeframe || '—')}</td>
+            <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
+            <td>${reasonsOf(t, cache).length}</td>
+            <td>${t.category === 'Multi-timeframe' ? 'Multi-TF' : 'Single-TF'}</td>
+            <td>${renderScreenshotThumbs(t)}</td>
+            <td class="${pnl(t) > 0 ? 'green' : pnl(t) < 0 ? 'red' : ''}">${money(pnl(t))}</td>
+            <td>
+              <button class="btn small" data-action="edit" data-id="${esc(t.id)}">✎</button>
+              <button class="btn small danger" data-action="delete" data-id="${esc(t.id)}">×</button>
+            </td>
+          </tr>`).join('')}
+        </tbody></table></div>`
     : '<div class="empty">No trades match those filters. Try clearing one or more filters.</div>';
 }
 
@@ -463,73 +380,41 @@ function renderMulti() {
   ).join('');
 
   const cache = new Map();
-
   $('multiHistory').innerHTML = a.length
-
-    ? `<div class="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-                            <th>Pair</th>
-              <th>Entry TF</th>
-              <th>Analysis timeframes</th>
-              <th>Reasons</th>
-              <th>Screenshots</th>
-              <th>Result</th>
-              <th>P/L</th>
-              <th>Edit</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${a.slice()
-              .sort((x, y) => y.createdAt - x.createdAt)
-              .map(t =>
-                `<tr>
-                  <td>${esc(new Date(t.date).toLocaleString())}</td>
-                  <td>${esc(t.pair)}</td>
-                  <td>${esc(t.entryTimeframe || 'Not recorded')}</td>
-                  <td>${esc((t.timeframes || []).join(' + '))}</td>
-                  <td>${reasonsOf(t, cache).length}</td>
-                  <td>${renderScreenshotThumbs(t)}</td>
-                  <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
-                  <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
-                  <td><button class="btn small" data-action="edit" data-id="${esc(t.id)}">✎</button></td>
-                </tr>`
-              ).join('')}
-          </tbody>
-        </table>
-      </div>`
+    ? `<div class="tablewrap"><table>
+        <thead><tr><th>Date</th><th>Pair</th><th>Entry TF</th><th>Analysis timeframes</th><th>Reasons</th><th>Screenshots</th><th>Result</th><th>P/L</th><th>Edit</th></tr></thead>
+        <tbody>${a.slice().sort((x, y) => y.createdAt - x.createdAt).map(t => `
+          <tr>
+            <td>${esc(new Date(t.date).toLocaleString())}</td>
+            <td>${esc(t.pair)}</td>
+            <td>${esc(t.entryTimeframe || 'Not recorded')}</td>
+            <td>${esc((t.timeframes || []).join(' + '))}</td>
+            <td>${reasonsOf(t, cache).length}</td>
+            <td>${renderScreenshotThumbs(t)}</td>
+            <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
+            <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
+            <td><button class="btn small" data-action="edit" data-id="${esc(t.id)}">✎</button></td>
+          </tr>`).join('')}
+        </tbody></table></div>`
     : '<div class="empty">No multi-timeframe trades yet. Select "Multi-timeframe" when logging a trade.</div>';
-}
+    }
 
 /* ---------- analytics ---------- */
 
 function profitFactor(a) {
-  const w = a.filter(t => pnl(t) > 0)
-    .reduce((s, t) => s + pnl(t), 0);
-
-  const l = Math.abs(
-    a.filter(t => pnl(t) < 0)
-      .reduce((s, t) => s + pnl(t), 0)
-  );
-
-  return l ? (w / l).toFixed(2) : w ? '∞' : '—';
+  const wins = a.filter(t => pnl(t) > 0).reduce((s, t) => s + pnl(t), 0);
+  const losses = Math.abs(a.filter(t => pnl(t) < 0).reduce((s, t) => s + pnl(t), 0));
+  return losses ? (wins / losses).toFixed(2) : wins ? '∞' : '—';
 }
 
 function avgOf(a, result) {
   const x = a.filter(t => t.result === result);
-
-  return x.length
-    ? x.reduce((s, t) => s + Math.abs(pnl(t)), 0) / x.length
-    : 0;
+  return x.length ? x.reduce((s, t) => s + Math.abs(pnl(t)), 0) / x.length : 0;
 }
 
 function renderDailyTradePerformance() {
   const days = new Map();
-
   state.trades.forEach(t => {
-    // Trade date is stored as a local datetime-local value (YYYY-MM-DDTHH:mm).
     const date = String(t.date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
     if (!days.has(date)) days.set(date, []);
@@ -537,11 +422,8 @@ function renderDailyTradePerformance() {
   });
 
   const groups = new Map([
-    ['1 trade', []],
-    ['2 trades', []],
-    ['3 trades', []],
-    ['4 trades', []],
-    ['5+ trades', []]
+    ['1 trade', []], ['2 trades', []], ['3 trades', []],
+    ['4 trades', []], ['5+ trades', []]
   ]);
 
   days.forEach(trades => {
@@ -550,51 +432,35 @@ function renderDailyTradePerformance() {
     groups.get(label).push(trades);
   });
 
-  const rows = [...groups.entries()]
-    .filter(([, dayGroups]) => dayGroups.length)
-    .map(([label, dayGroups]) => {
-      const completed = dayGroups.flat().filter(t =>
-        ['WIN', 'LOSS', 'DRAW'].includes(t.result)
-      );
-      const decisive = completed.filter(t => t.result === 'WIN' || t.result === 'LOSS');
-      const totalPL = completed.reduce((sum, t) => sum + pnl(t), 0);
-      const avgDailyPL = totalPL / dayGroups.length;
-      const tradeCount = dayGroups.reduce((sum, day) => sum + day.length, 0);
-
-      return {
-        label,
-        days: dayGroups.length,
-        tradeCount,
-        resolvedCount: completed.length,
-        winRate: winRate(decisive),
-        avgDailyPL,
-        totalPL
-      };
-    });
+  const rows = [...groups.entries()].filter(([, d]) => d.length).map(([label, dayGroups]) => {
+    const completed = dayGroups.flat().filter(t => ['WIN', 'LOSS', 'DRAW'].includes(t.result));
+    const decisive = completed.filter(t => t.result === 'WIN' || t.result === 'LOSS');
+    const totalPL = completed.reduce((sum, t) => sum + pnl(t), 0);
+    return {
+      label,
+      days: dayGroups.length,
+      tradeCount: dayGroups.reduce((sum, day) => sum + day.length, 0),
+      resolvedCount: completed.length,
+      winRate: winRate(decisive),
+      avgDailyPL: totalPL / dayGroups.length,
+      totalPL
+    };
+  });
 
   const target = $('dailyTradePerformance');
   if (!target) return;
 
   target.innerHTML = rows.length
-    ? `<div class="tablewrap">
-        <table>
-          <thead><tr>
-            <th>Trades/day</th><th>Days</th><th>Total trades</th>
-            <th>Resolved</th><th>Win rate</th><th>Avg daily P/L</th><th>Total P/L</th>
-          </tr></thead>
-          <tbody>${rows.map(r => `
-            <tr>
-              <td>${esc(r.label)}</td>
-              <td>${r.days}</td>
-              <td>${r.tradeCount}</td>
-              <td>${r.resolvedCount}</td>
-              <td>${r.resolvedCount ? r.winRate.toFixed(1) + '%' : '—'}</td>
-              <td class="${r.avgDailyPL >= 0 ? 'green' : 'red'}">${money(r.avgDailyPL)}</td>
-              <td class="${r.totalPL >= 0 ? 'green' : 'red'}">${money(r.totalPL)}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`
+    ? `<div class="tablewrap"><table>
+        <thead><tr><th>Trades/day</th><th>Days</th><th>Total trades</th><th>Resolved</th><th>Win rate</th><th>Avg daily P/L</th><th>Total P/L</th></tr></thead>
+        <tbody>${rows.map(r => `
+          <tr>
+            <td>${esc(r.label)}</td><td>${r.days}</td><td>${r.tradeCount}</td><td>${r.resolvedCount}</td>
+            <td>${r.resolvedCount ? r.winRate.toFixed(1) + '%' : '—'}</td>
+            <td class="${r.avgDailyPL >= 0 ? 'green' : 'red'}">${money(r.avgDailyPL)}</td>
+            <td class="${r.totalPL >= 0 ? 'green' : 'red'}">${money(r.totalPL)}</td>
+          </tr>`).join('')}
+        </tbody></table></div>`
     : '<div class="empty">Log trades on different days to compare daily performance.</div>';
 }
 
@@ -610,18 +476,28 @@ function renderEntryCountPerformance() {
   const target = $('entryCountPerformance');
   if (!target) return;
 
-  target.innerHTML = rows.length ? `<div class="tablewrap"><table>
-    <thead><tr><th>Entries</th><th>Sample</th><th>Wins</th><th>Losses</th><th>Draws</th><th>Open</th><th>Win rate</th><th>Loss rate</th></tr></thead>
-    <tbody>${rows.map(([count, trades]) => {
-      const wins = trades.filter(t => t.result === 'WIN').length;
-      const losses = trades.filter(t => t.result === 'LOSS').length;
-      const draws = trades.filter(t => t.result === 'DRAW').length;
-      const open = trades.filter(t => t.result === 'OPEN').length;
-      const decisive = wins + losses;
-      const wr = decisive ? wins / decisive * 100 : 0;
-      const lr = decisive ? losses / decisive * 100 : 0;
-      return `<tr><td>${count}</td><td>${trades.length}</td><td class="green">${wins}</td><td class="red">${losses}</td><td>${draws}</td><td>${open}</td><td>${decisive ? wr.toFixed(1) + '%' : '—'}</td><td>${decisive ? lr.toFixed(1) + '%' : '—'}</td></tr>`;
-    }).join('')}</tbody></table></div><p class="muted" style="font-size:10px;margin:8px 0 0">Win and loss rates use wins + losses as the denominator. Draws and open trades are counted separately and excluded from those percentages.</p>`
+  target.innerHTML = rows.length
+    ? `<div class="tablewrap"><table>
+        <thead><tr><th>Entries</th><th>Sample</th><th>Wins</th><th>Losses</th><th>Draws</th><th>Open</th><th>Win rate</th><th>Loss rate</th></tr></thead>
+        <tbody>${rows.map(([count, trades]) => {
+          const wins = trades.filter(t => t.result === 'WIN').length;
+          const losses = trades.filter(t => t.result === 'LOSS').length;
+          const draws = trades.filter(t => t.result === 'DRAW').length;
+          const open = trades.filter(t => t.result === 'OPEN').length;
+          const decisive = wins + losses;
+          const wr = decisive ? wins / decisive * 100 : 0;
+          const lr = decisive ? losses / decisive * 100 : 0;
+          return `<tr>
+            <td>${count}</td><td>${trades.length}</td>
+            <td class="green">${wins}</td><td class="red">${losses}</td>
+            <td>${draws}</td><td>${open}</td>
+            <td>${decisive ? wr.toFixed(1) + '%' : '—'}</td>
+            <td>${decisive ? lr.toFixed(1) + '%' : '—'}</td>
+          </tr>`;
+        }).join('')}</tbody></table></div>
+        <p class="muted" style="font-size:10px;margin:8px 0 0">
+          Win and loss rates use wins + losses as the denominator. Draws and open trades are counted separately and excluded from those percentages.
+        </p>`
     : '<div class="empty">No trades recorded yet.</div>';
 }
 
@@ -641,47 +517,28 @@ function renderAnalytics() {
   renderEntryCountPerformance();
   renderCount($('byCount'), r, cache);
 
-  $('byCategory').innerHTML = [
-    'Single-timeframe',
-    'Multi-timeframe'
-  ].map(c => {
+  $('byCategory').innerHTML = ['Single-timeframe', 'Multi-timeframe'].map(c => {
     const a = r.filter(t => t.category === c);
-
     return `<div style="margin:13px 0">
-      <div class="row between">
-        <span>${esc(c)} (${a.length})</span>
-        <b>${winRate(a).toFixed(1)}%</b>
-      </div>
+      <div class="row between"><span>${esc(c)} (${a.length})</span><b>${winRate(a).toFixed(1)}%</b></div>
       <div class="bar"><i style="width:${winRate(a)}%"></i></div>
     </div>`;
   }).join('');
 
   const comboMap = {};
-
   r.forEach(t => {
     const k = [...reasonsOf(t, cache)].sort().join(' + ') || 'No reasons';
     (comboMap[k] ??= []).push(t);
   });
 
-  const combos = Object.entries(comboMap)
-    .sort((a, b) => b[1].length - a[1].length);
-
+  const combos = Object.entries(comboMap).sort((a, b) => b[1].length - a[1].length);
   $('byCombo').innerHTML = combos.length
-    ? `<div class="tablewrap">
-        <table>
-          <thead><tr><th>Exact combination</th><th>Trades</th><th>Win rate</th><th>Net P/L</th></tr></thead>
-          <tbody>
-            ${combos.map(([k, a]) =>
-              `<tr>
-                <td>${esc(k)}</td>
-                <td>${a.length}</td>
-                <td>${winRate(a).toFixed(1)}%</td>
-                <td>${money(a.reduce((s, t) => s + pnl(t), 0))}</td>
-              </tr>`
-            ).join('')}
-          </tbody>
-        </table>
-      </div>`
+    ? `<div class="tablewrap"><table>
+        <thead><tr><th>Exact combination</th><th>Trades</th><th>Win rate</th><th>Net P/L</th></tr></thead>
+        <tbody>${combos.map(([k, a]) => `
+          <tr><td>${esc(k)}</td><td>${a.length}</td><td>${winRate(a).toFixed(1)}%</td>
+          <td>${money(a.reduce((s, t) => s + pnl(t), 0))}</td></tr>`).join('')}
+        </tbody></table></div>`
     : '<div class="empty">No resolved trades yet.</div>';
 
   const dims = [
@@ -693,77 +550,41 @@ function renderAnalytics() {
 
   $('dimensions').innerHTML = dims.map(([label, get]) => {
     const m = {};
-
     r.forEach(t => (m[get(t)] ??= []).push(t));
-
     const rows = Object.entries(m).map(([k, a]) =>
-      `<div class="row between" style="padding:5px 0">
-        <span>${esc(k)} · ${a.length} trades</span>
-        <b>${winRate(a).toFixed(1)}%</b>
-      </div>`
+      `<div class="row between" style="padding:5px 0"><span>${esc(k)} · ${a.length} trades</span><b>${winRate(a).toFixed(1)}%</b></div>`
     ).join('');
-
     return `<h4>${esc(label)}</h4>${rows || '<span class="muted">No data</span>'}`;
   }).join('<hr style="border-color:#20344d">');
 
   const individual = {};
-
-  r.forEach(t =>
-    (t.reasonIds || []).forEach(id =>
-      (individual[id] ??= []).push(t)
-    )
-  );
+  r.forEach(t => (t.reasonIds || []).forEach(id => (individual[id] ??= []).push(t)));
 
   $('individualReasons').innerHTML = Object.keys(individual).length
     ? Object.entries(individual).map(([id, a]) => {
-        const nm =
-          reasonById(id)?.name ||
-          a[0].reasonNames?.[id] ||
-          'Archived reason';
-
+        const nm = reasonById(id)?.name || a[0].reasonNames?.[id] || 'Archived reason';
         return `<div style="margin:10px 0">
-          <div class="row between">
-            <span>${esc(nm)} · ${a.length} trades</span>
-            <b>${winRate(a).toFixed(1)}%</b>
-          </div>
+          <div class="row between"><span>${esc(nm)} · ${a.length} trades</span><b>${winRate(a).toFixed(1)}%</b></div>
           <div class="bar"><i style="width:${winRate(a)}%"></i></div>
         </div>`;
       }).join('')
     : '<span class="muted">No reason data yet.</span>';
 
   const tf = {};
-
-  r.forEach(t =>
-    (t.timeframes || []).forEach(k =>
-      (tf[k] ??= []).push(t)
-    )
-  );
-
+  r.forEach(t => (t.timeframes || []).forEach(k => (tf[k] ??= []).push(t)));
   const entryTf = {};
   r.forEach(t => {
     if (t.entryTimeframe) (entryTf[t.entryTimeframe] ??= []).push(t);
   });
 
   const analysisTfHtml = Object.keys(tf).length
-    ? Object.entries(tf)
-        .sort((a, b) => TIMEFRAMES.indexOf(a[0]) - TIMEFRAMES.indexOf(b[0]))
-        .map(([k, a]) =>
-          `<div class="row between" style="padding:6px 0">
-            <span>${esc(k)} · ${a.length} trades</span>
-            <b>${winRate(a).toFixed(1)}%</b>
-          </div>`
-        ).join('')
+    ? Object.entries(tf).sort((a, b) => TIMEFRAMES.indexOf(a[0]) - TIMEFRAMES.indexOf(b[0]))
+        .map(([k, a]) => `<div class="row between" style="padding:6px 0"><span>${esc(k)} · ${a.length} trades</span><b>${winRate(a).toFixed(1)}%</b></div>`).join('')
     : '<span class="muted">No analysis timeframe data yet.</span>';
 
   const entryTfHtml = Object.keys(entryTf).length
-    ? Object.entries(entryTf)
-        .sort((a, b) => TIMEFRAMES.indexOf(a[0]) - TIMEFRAMES.indexOf(b[0]))
-        .map(([k, a]) =>
-          `<div class="row between" style="padding:6px 0">
-            <span>${esc(k)} · ${a.length} entries</span>
-            <b>${winRate(a).toFixed(1)}%</b>
-          </div>`
-        ).join('')
+    ? Object.entries(entryTf).sort((a, b) => TIMEFRAMES.indexOf(a[0]) - TIMEFRAMES.indexOf(b[0]))
+        .map(([k, a]) => `<div class="row between" style="padding:6px 0"><span>${esc(k)} · ${a.length} trades</span><b>${winRate(a).toFixed(1)}%</b></div>`).join('')
     : '<span class="muted">No actual entry timeframe data yet.</span>';
 
   $('timeframeStats').innerHTML =
@@ -773,47 +594,28 @@ function renderAnalytics() {
 
   const avgRating = key => {
     const a = r.filter(t => Number(t[key]) > 0);
-
-    return a.length
-      ? (a.reduce((s, t) => s + Number(t[key]), 0) / a.length).toFixed(1) + ' / 10'
-      : '—';
+    return a.length ? (a.reduce((s, t) => s + Number(t[key]), 0) / a.length).toFixed(1) + ' / 10' : '—';
   };
 
   $('qualityStats').innerHTML =
-    `<div class="row between">
-      <span>Average setup quality</span>
-      <b>${esc(avgRating('setupQuality'))}</b>
-    </div>` +
-    `<div class="row between" style="margin-top:10px">
-      <span>Average execution quality</span>
-      <b>${esc(avgRating('executionQuality'))}</b>
-    </div>`;
+    `<div class="row between"><span>Average setup quality</span><b>${esc(avgRating('setupQuality'))}</b></div>` +
+    `<div class="row between" style="margin-top:10px"><span>Average execution quality</span><b>${esc(avgRating('executionQuality'))}</b></div>`;
 
-  let streak = 0;
-  let maxStreak = 0;
-
+  let streak = 0, maxStreak = 0;
   [...r].sort((a, b) => new Date(a.date) - new Date(b.date)).forEach(t => {
     if (t.result === 'LOSS') {
       streak++;
       maxStreak = Math.max(maxStreak, streak);
-    } else {
-      streak = 0;
-    }
+    } else streak = 0;
   });
 
   const avgRisk = r.length
-    ? r.reduce((s, t) => s + num(t.risk), 0) / r.length
+    ? r.reduce((s, t) => s + totalRisk(t), 0) / r.length
     : 0;
 
   $('riskStats').innerHTML =
-    `<div class="row between">
-      <span>Longest consecutive losing streak</span>
-      <b>${maxStreak}</b>
-    </div>` +
-    `<div class="row between" style="margin-top:10px">
-      <span>Average amount risked</span>
-      <b>${money(avgRisk)}</b>
-    </div>`;
+    `<div class="row between"><span>Longest consecutive losing streak</span><b>${maxStreak}</b></div>` +
+    `<div class="row between" style="margin-top:10px"><span>Average total risk per trade</span><b>${money(avgRisk)}</b></div>`;
 }
 
 /* ---------- setups ---------- */
@@ -825,40 +627,31 @@ function renderSetups() {
   resolved().forEach(t => {
     const ids = [...(t.reasonIds || [])].sort();
     const key = ids.join('|') || 'No reasons';
-
     if (!groups[key]) {
       groups[key] = {
         name: [...reasonsOf(t, cache)].sort().join(' + ') || 'No reasons',
         trades: []
       };
     }
-
     groups[key].trades.push(t);
   });
 
-  const arr = Object.values(groups)
-    .sort((a, b) => b.trades.length - a.trades.length);
-
+  const arr = Object.values(groups).sort((a, b) => b.trades.length - a.trades.length);
   $('setupCards').innerHTML = arr.length
     ? arr.map(g => {
         const wr = winRate(g.trades);
         const wins = g.trades.filter(t => t.result === 'WIN').length;
         const losses = g.trades.filter(t => t.result === 'LOSS').length;
         const draws = g.trades.filter(t => t.result === 'DRAW').length;
-
         return `<div class="setup-card">
-          <div>
-            <b>${esc(g.name)}</b>
-            <small class="muted">${g.trades.length} trades · ${wins}W / ${losses}L / ${draws}D · ${sampleLabel(g.trades.length)}</small>
-          </div>
-          <div class="ring">${wr.toFixed(1)}%</div>
-          <div class="trades muted">${g.trades.length}</div>
+          <div><b>${esc(g.name)}</b><small class="muted">${g.trades.length} trades · ${wins}W / ${losses}L / ${draws}D · ${sampleLabel(g.trades.length)}</small></div>
+          <div class="ring">${wr.toFixed(1)}%</div><div class="trades muted">${g.trades.length}</div>
         </div>`;
       }).join('')
     : '<div class="empty">Log trades with reasons selected to build your setup library.</div>';
 }
 
-/* ---------- settings & reasons & transactions ---------- */
+/* ---------- settings, reasons, transactions ---------- */
 
 function loadSettingsUI() {
   $('startingBalance').value = state.settings.startingBalance ?? 70;
@@ -885,10 +678,8 @@ function renderTx() {
         const effect = transactionEffect(t);
         const sign = effect < 0 ? '−' : '+';
         return `<div class="row between" style="padding:8px;border-bottom:1px solid #20344d;gap:8px">
-          <span style="min-width:0;flex:1">
-            <b>${esc(transactionDisplayType(t))}</b> · ${esc(t.date)}<br>
-            <small class="muted">${esc(transactionDisplayNote(t) || 'No note')}</small>
-          </span>
+          <span style="min-width:0;flex:1"><b>${esc(transactionDisplayType(t))}</b> · ${esc(t.date)}<br>
+            <small class="muted">${esc(transactionDisplayNote(t) || 'No note')}</small></span>
           <b class="${effect < 0 ? 'red' : 'green'}">${sign}${money(Math.abs(effect))}</b>
           <button type="button" class="btn small danger" data-action="delete-transaction" data-id="${esc(t.id)}" aria-label="Delete transaction">×</button>
         </div>`;
@@ -900,6 +691,7 @@ async function deleteTransaction(id) {
   const transaction = state.transactions.find(t => t.id === id);
   if (!transaction) return;
   if (!confirm(`Delete this ${transactionDisplayType(transaction).toLowerCase()} of ${money(transaction.amount)}? The account balance will be recalculated.`)) return;
+
   try {
     await S.deleteTransaction(id);
     state.transactions = state.transactions.filter(t => t.id !== id);
@@ -913,20 +705,11 @@ async function deleteTransaction(id) {
 function updateBalance() {
   const start = num(state.settings.startingBalance, 70);
   const tradePL = resolved().reduce((s, t) => s + pnl(t), 0);
-
-  const txTotal = state.transactions.reduce(
-    (s, t) => s + transactionEffect(t),
-    0
-  );
-
+  const txTotal = state.transactions.reduce((s, t) => s + transactionEffect(t), 0);
   const balance = start + tradePL + txTotal;
-
   $('accountBalance').textContent = money(balance);
-
   $('balanceChange').textContent =
-    (balance - start >= 0 ? '▲ +' : '▼ ') +
-    money(balance - start) +
-    ' since starting balance';
+    (balance - start >= 0 ? '▲ +' : '▼ ') + money(balance - start) + ' since starting balance';
 }
 
 /* ---------- render all ---------- */
@@ -941,9 +724,10 @@ function renderAll() {
   renderSetups();
   renderReasons();
   renderTx();
-}
+  }
 
-/* ---------- form ---------- */
+/* ---------- trade form ---------- */
+
 function nowLocalInput() {
   const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
   return d.toISOString().slice(0, 16);
@@ -971,36 +755,29 @@ function clearForm() {
   $('editId').value = '';
   $('formTitle').textContent = 'Log a Trade';
   $('payout').value = state.settings.defaultPayout ?? 80;
+  $('numberEntries').value = '1';
   setTradeResult('WIN');
   setTradeDirection('BUY');
-  $('numberEntries').value = '1';
-
   state.pendingShots = [];
-
   $('shotMeta').innerHTML = '';
-
   renderChecks();
 }
 
 function renderShotMeta() {
-  $('shotMeta').innerHTML = state.pendingShots.map((s, i) =>
-    `<div class="mini" style="margin-top:8px">
+  $('shotMeta').innerHTML = state.pendingShots.map((s, i) => `
+    <div class="mini" style="margin-top:8px">
       <div class="row between">
         <b>${esc(s.name)}</b>
         <button type="button" class="btn small danger" data-action="remove-shot" data-idx="${i}">Remove</button>
       </div>
-
       <div class="formgrid">
         <div class="field">
           <label>Screenshot timeframe</label>
           <select data-action="shot-tf" data-idx="${i}">
             <option value="">Select</option>
-            ${TIMEFRAMES.map(t =>
-              `<option value="${esc(t)}" ${s.tf === t ? 'selected' : ''}>${esc(t)}</option>`
-            ).join('')}
+            ${TIMEFRAMES.map(t => `<option value="${esc(t)}" ${s.tf === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
           </select>
         </div>
-
         <div class="field">
           <label>Associated reasons</label>
           <select multiple size="3" data-action="shot-reasons" data-idx="${i}">
@@ -1010,26 +787,18 @@ function renderShotMeta() {
           </select>
         </div>
       </div>
-
-      <img
-        data-lightbox
-        src="${esc(s.data)}"
-        alt="Screenshot preview"
-        title="Tap to enlarge"
-        style="max-width:160px;max-height:90px;border-radius:7px;cursor:zoom-in"
-      >
-    </div>`
-  ).join('');
+      <img data-lightbox src="${esc(s.data)}" alt="Screenshot preview"
+        title="Tap to enlarge" style="max-width:160px;max-height:90px;border-radius:7px;cursor:zoom-in">
+    </div>
+  `).join('');
 }
 
-function readFileAsDataURL(f) {
+function readFileAsDataURL(file) {
   return new Promise((resolve, reject) => {
-    const r = new FileReader();
-
-    r.onload = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-
-    r.readAsDataURL(f);
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
   });
 }
 
@@ -1048,28 +817,22 @@ async function saveTrade(e) {
     return showError('Number of entries must be a whole number from 1 to 99.');
   }
 
+  const perEntryRisk = Number($('risk').value);
+  if (!Number.isFinite(perEntryRisk) || perEntryRisk < 0) {
+    $('risk').focus();
+    return showError('Enter a valid amount risked per entry.');
+  }
+
   const id = $('editId').value || U.uid();
   const old = state.trades.find(t => t.id === id);
 
-  // These selections belong only to the trade itself.
-  const reasonIds = [
-    ...document.querySelectorAll('input[name="reason"]:checked')
-  ].map(x => x.value);
-
-  const tfs = [
-    ...document.querySelectorAll('input[name="tf"]:checked')
-  ].map(x => x.value);
-
-  // IMPORTANT:
-  // Screenshot timeframe and reason selections stay on each screenshot.
-  // They are deliberately NOT merged into trade-level timeframes/reasons.
+  const reasonIds = [...document.querySelectorAll('input[name="reason"]:checked')]
+    .map(x => x.value);
+  const tfs = [...document.querySelectorAll('input[name="tf"]:checked')]
+    .map(x => x.value);
 
   const reasonNames = {};
-
-  state.reasons.forEach(r => {
-    reasonNames[r.id] = r.name;
-  });
-
+  state.reasons.forEach(r => { reasonNames[r.id] = r.name; });
   state.pendingShots.forEach(s => {
     (s.reasonIds || []).forEach(rid => {
       const r = reasonById(rid);
@@ -1084,7 +847,9 @@ async function saveTrade(e) {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     direction: storageDirection($('direction').value),
     result: $('result').value,
-    risk: $('risk').value,
+    risk: perEntryRisk,
+    numberEntries: requestedEntries,
+    riskMode: RISK_MODE,
     payout: $('payout').value,
     confidence: $('confidence').value,
     session: $('session').value,
@@ -1102,8 +867,9 @@ async function saveTrade(e) {
     reasonNames
   }, new Set(state.reasons.map(r => r.id)));
 
-  // Extra field is preserved by IndexedDB even though the v2 sanitizer predates it.
-  trade.numberEntries = Math.max(1, Math.min(99, Number.parseInt($('numberEntries').value, 10) || 1));
+  // Explicitly retain the new fields after sanitization.
+  trade.numberEntries = requestedEntries;
+  trade.riskMode = RISK_MODE;
 
   try {
     await S.putTrade(trade);
@@ -1127,38 +893,33 @@ function editTrade(id) {
   if (!t) return;
 
   nav('log');
-
   $('editId').value = id;
   $('formTitle').textContent = 'Edit Trade';
 
   [
-    'pair',
-    'result',
-    'risk',
-    'payout',
-    'confidence',
-    'session',
-    'condition',
-    'category',
-    'entryTimeframe',
-    'setupQuality',
-    'executionQuality',
-    'notes'
-  ].forEach(k => {
-    if (k !== 'result') $(k).value = t[k] ?? '';
-  });
+    'pair','payout','confidence','session','condition','category',
+    'entryTimeframe','setupQuality','executionQuality','notes'
+  ].forEach(k => { $(k).value = t[k] ?? ''; });
+
   setTradeResult(t.result || 'OPEN');
   setTradeDirection(displayDirection(t.direction));
-  $('numberEntries').value = String(entryCount(t));
 
+  const entries = entryCount(t);
+  $('numberEntries').value = String(entries);
+
+  // Older trades stored risk as one total amount. Divide it for display
+  // when editing, so the new per-entry calculation preserves the old total.
+  const displayRisk = t.riskMode === RISK_MODE
+    ? num(t.risk)
+    : num(t.risk) / entries;
+
+  $('risk').value = Number(displayRisk.toFixed(8));
   $('tradeDate').value = t.date;
 
   renderChecks();
-
   document.querySelectorAll('input[name="reason"]').forEach(x => {
     x.checked = (t.reasonIds || []).includes(x.value);
   });
-
   document.querySelectorAll('input[name="tf"]').forEach(x => {
     x.checked = (t.timeframes || []).includes(x.value);
   });
@@ -1175,7 +936,6 @@ function editTrade(id) {
 
 async function deleteTrade(id) {
   if (!confirm('Delete this trade and its screenshots?')) return;
-
   try {
     await S.deleteTrade(id);
     state.trades = state.trades.filter(t => t.id !== id);
@@ -1185,7 +945,7 @@ async function deleteTrade(id) {
   }
 }
 
-/* ---------- settings save ---------- */
+/* ---------- settings ---------- */
 
 async function saveSettings() {
   const s = U.sanitizeSettings({
@@ -1205,29 +965,18 @@ async function saveSettings() {
   }
 }
 
-/* ---------- reasons add/rename/archive ---------- */
+/* ---------- reasons ---------- */
 
 async function addReason(e) {
   e.preventDefault();
-
   const name = $('newReason').value.trim();
-
   if (!name) return;
 
-  if (
-    state.reasons.some(
-      r => r.name.toLowerCase() === name.toLowerCase()
-    )
-  ) {
+  if (state.reasons.some(r => r.name.toLowerCase() === name.toLowerCase())) {
     return alert('That reason already exists.');
   }
 
-  const r = U.sanitizeReason({
-    id: U.uid(),
-    name,
-    active: true
-  });
-
+  const r = U.sanitizeReason({ id: U.uid(), name, active: true });
   try {
     await S.putReason(r);
     state.reasons.push(r);
@@ -1245,22 +994,15 @@ async function renameReason(id) {
   const n = prompt('Rename reason', r.name);
   if (!n || !n.trim()) return;
 
-  const next = U.sanitizeReason({
-    ...r,
-    name: n.trim()
-  });
-
+  const next = U.sanitizeReason({ ...r, name: n.trim() });
   try {
     await S.putReason(next);
     r.name = next.name;
 
     const updates = [];
-
     state.trades.forEach(t => {
       const usedOnTrade = (t.reasonIds || []).includes(id);
-      const usedOnScreenshot = (t.screenshots || []).some(
-        s => (s.reasonIds || []).includes(id)
-      );
+      const usedOnScreenshot = (t.screenshots || []).some(s => (s.reasonIds || []).includes(id));
 
       if (usedOnTrade || usedOnScreenshot) {
         t.reasonNames = t.reasonNames || {};
@@ -1271,7 +1013,6 @@ async function renameReason(id) {
     });
 
     await Promise.all(updates);
-
     renderAll();
   } catch (err) {
     showError('Could not rename: ' + err.message);
@@ -1281,11 +1022,7 @@ async function renameReason(id) {
 async function archiveReason(id) {
   const r = reasonById(id);
   if (!r) return;
-
-  const next = {
-    ...r,
-    active: !r.active
-  };
+  const next = { ...r, active: !r.active };
 
   try {
     await S.putReason(next);
@@ -1296,7 +1033,7 @@ async function archiveReason(id) {
   }
 }
 
-/* ---------- transactions ---------- */
+/* ---------- account transactions ---------- */
 
 async function addTransaction(e) {
   e.preventDefault();
@@ -1304,15 +1041,12 @@ async function addTransaction(e) {
   const selectedType = $('txType').value;
   const decrease = selectedType === 'Adjustment (Decrease)';
 
-  // Storage accepts only Deposit, Withdrawal, or Adjustment.
-  // The marker preserves the decrease distinction without changing storage.js.
   const tx = U.sanitizeTransaction({
     id: U.uid(),
     type: decrease ? 'Adjustment' : selectedType,
     amount: $('txAmount').value,
     date: $('txDate').value,
-    note: (decrease ? DECREASE_ADJUSTMENT_MARKER : '') +
-      $('txNote').value
+    note: (decrease ? DECREASE_ADJUSTMENT_MARKER : '') + $('txNote').value
   });
 
   try {
@@ -1326,27 +1060,16 @@ async function addTransaction(e) {
   }
 }
 
-/* ---------- backup ---------- */
+/* ---------- backup and export ---------- */
 
 async function exportBackup() {
   try {
     const payload = await S.exportAll();
-
-    const blob = new Blob(
-      [JSON.stringify(payload, null, 2)],
-      { type: 'application/json' }
-    );
-
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
-
     a.href = URL.createObjectURL(blob);
-    a.download =
-      'jarvis-backup-' +
-      new Date().toISOString().slice(0, 10) +
-      '.json';
-
+    a.download = 'jarvis-backup-' + new Date().toISOString().slice(0, 10) + '.json';
     a.click();
-
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   } catch (err) {
     showError('Export failed: ' + err.message);
@@ -1354,27 +1077,43 @@ async function exportBackup() {
 }
 
 function csvCell(value) {
-  const text = String(value ?? '');
-  return '"' + text.replace(/"/g, '""') + '"';
+  return '"' + String(value ?? '').replace(/"/g, '""') + '"';
 }
 
 async function exportTradesCsv() {
   try {
     const cache = new Map();
     const headers = [
-      'Date and Time','Currency Pair','Direction','Number of Entries','Result','Actual Entry Timeframe',
-      'Analysis Timeframes','Risk Amount','Payout Percent','Profit/Loss','Session',
-      'Market Condition','Trade Category','Setup Quality','Execution Quality',
-      'Reasons','Notes','Screenshot Count'
+      'Date and Time','Currency Pair','Direction','Number of Entries','Result',
+      'Actual Entry Timeframe','Analysis Timeframes','Amount Risked Per Entry',
+      'Total Risk','Payout Percent','Profit/Loss','Session','Market Condition',
+      'Trade Category','Setup Quality','Execution Quality','Reasons','Notes','Screenshot Count'
     ];
+
     const rows = [...state.trades]
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .map(t => [
-        t.date, t.pair, displayDirection(t.direction), entryCount(t), t.result, t.entryTimeframe || '',
-        (t.timeframes || []).join(' + '), num(t.risk), num(t.payout), Number(pnl(t).toFixed(8)),
-        t.session, t.condition, t.category, t.setupQuality ?? '', t.executionQuality ?? '',
-        reasonsOf(t, cache).join(' + '), t.notes || '', (t.screenshots || []).length
+        t.date,
+        t.pair,
+        displayDirection(t.direction),
+        entryCount(t),
+        t.result,
+        t.entryTimeframe || '',
+        (t.timeframes || []).join(' + '),
+        t.riskMode === RISK_MODE ? num(t.risk) : num(t.risk) / entryCount(t),
+        totalRisk(t),
+        num(t.payout),
+        Number(pnl(t).toFixed(8)),
+        t.session,
+        t.condition,
+        t.category,
+        t.setupQuality ?? '',
+        t.executionQuality ?? '',
+        reasonsOf(t, cache).join(' + '),
+        t.notes || '',
+        (t.screenshots || []).length
       ]);
+
     const csv = '\ufeff' + [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -1396,7 +1135,6 @@ async function importBackup(e) {
 
   try {
     const text = await f.text();
-
     let parsed;
 
     try {
@@ -1405,39 +1143,31 @@ async function importBackup(e) {
       throw new Error('File is not valid JSON.');
     }
 
-    if (
-      !parsed ||
-      (parsed.app !== 'Jarvis' && parsed.app !== 'King of Snipers')
-    ) {
+    if (!parsed || (parsed.app !== 'Jarvis' && parsed.app !== 'King of Snipers')) {
       throw new Error('Not a Jarvis/King of Snipers backup.');
     }
-
     if (!parsed.data || !Array.isArray(parsed.data.trades)) {
       throw new Error('Backup has no trade data.');
     }
+    if (!confirm('Restore this backup? Current journal data will be replaced.')) return;
 
-    if (
-      !confirm(
-        'Restore this backup? Current journal data will be replaced.'
-      )
-    ) {
-      return;
-    }
-      await S.importAll(parsed.data, { skipValidate: false });
+    await S.importAll(parsed.data, { skipValidate: false });
 
-    // The existing v2 importer sanitizes older trade fields. Reapply the
-    // newer entry-count field afterward without changing the database schema.
-    const importedCounts = new Map(
-      (parsed.data.trades || []).map(t => [t.id, entryCount(t)])
-    );
+    // Restore the entry count and risk mode exactly as recorded in the backup.
     const restoredTrades = await S.getAllTrades();
-    await Promise.all(restoredTrades.map(t =>
-      S.putTrade({ ...t, numberEntries: importedCounts.get(t.id) || 1 })
-    ));
+    const sourceById = new Map(parsed.data.trades.map(t => [t.id, t]));
+
+    await Promise.all(restoredTrades.map(t => {
+      const source = sourceById.get(t.id) || {};
+      return S.putTrade({
+        ...t,
+        numberEntries: entryCount(source),
+        ...(source.riskMode === RISK_MODE ? { riskMode: RISK_MODE } : {})
+      });
+    }));
 
     await reloadState();
     renderAll();
-
     alert('Backup restored.');
   } catch (err) {
     showError('Could not restore: ' + err.message);
@@ -1446,7 +1176,7 @@ async function importBackup(e) {
   }
 }
 
-/* ---------- lightbox ---------- */
+/* ---------- screenshot viewer ---------- */
 
 let lbScale = 1;
 let lbX = 0;
@@ -1459,13 +1189,10 @@ function openLightbox(src) {
   const img = $('lbImg');
 
   img.src = src;
-
   lbScale = 1;
   lbX = 0;
   lbY = 0;
-
   img.style.transform = 'translate(0,0) scale(1)';
-
   lb.classList.add('show');
 }
 
@@ -1475,104 +1202,7 @@ function closeLightbox() {
 }
 
 function applyLightboxTransform() {
-  $('lbImg').style.transform =
-    `translate(${lbX}px,${lbY}px) scale(${lbScale})`;
-}
-
-/* ---------- screenshot text recognition (OCR only; no predictions) ---------- */
-
-let tesseractModulePromise = null;
-
-async function getTesseractModule() {
-  if (!tesseractModulePromise) {
-    tesseractModulePromise = import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
-  }
-  return tesseractModulePromise;
-}
-
-function parseRecognizedTradeText(raw) {
-  const text = String(raw || '').toUpperCase();
-  const found = {};
-  const pairMatch = text.match(/\b(EUR|USD|GBP|JPY|AUD|NZD|CAD|CHF|CNY|HKD|SGD|ZAR|TRY|MXN)\s*[/_-]?\s*(EUR|USD|GBP|JPY|AUD|NZD|CAD|CHF|CNY|HKD|SGD|ZAR|TRY|MXN)\b/);
-  if (pairMatch && pairMatch[1] !== pairMatch[2]) found.pair = pairMatch[1] + '/' + pairMatch[2];
-
-  if (/\b(PUT|SELL|LOWER)\b/.test(text)) found.direction = 'SELL';
-  else if (/\b(CALL|BUY|HIGHER)\b/.test(text)) found.direction = 'BUY';
-
-  const riskMatch = text.match(/(?:AMOUNT|INVESTMENT|TRADE\s*AMOUNT|STAKE)\s*[:：]?\s*[$€£]?\s*(\d+(?:[.,]\d{1,2})?)/);
-  if (riskMatch) found.risk = riskMatch[1].replace(',', '.');
-
-  const payoutMatch = text.match(/(?:PAYOUT|PROFIT|RETURN)\s*[:：]?\s*(\d+(?:[.,]\d+)?)\s*%/);
-  if (payoutMatch) found.payout = payoutMatch[1].replace(',', '.');
-
-  const tfMatch = text.match(/\b(1|2|3|5|10|15|30)\s*(MIN|M)\b|\b(1|2|4)\s*(HOUR|HR|H)\b/);
-  if (tfMatch) {
-    if (tfMatch[1]) found.entryTimeframe = tfMatch[1] + 'M';
-    else if (tfMatch[3]) found.entryTimeframe = tfMatch[3] + 'H';
-  }
-
-  const dateMatch = text.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
-  if (dateMatch) {
-    const y = dateMatch[1], m = dateMatch[2].padStart(2, '0'), d = dateMatch[3].padStart(2, '0');
-    found.tradeDate = `${y}-${m}-${d}`;
-  }
-  return found;
-}
-
-async function recognizeScreenshot() {
-  const input = $('recognitionScreenshot');
-  const file = input?.files?.[0];
-  const status = $('recognitionStatus');
-  const textOutput = $('recognitionText');
-  if (!file) { status.textContent = 'Choose a screenshot first.'; return; }
-  if (!file.type.startsWith('image/')) { status.textContent = 'Please choose an image file.'; return; }
-
-  const button = $('recognizeScreenshot');
-  button.disabled = true;
-  button.textContent = 'Reading screenshot…';
-  status.textContent = 'Loading text recognition engine. The first use requires an internet connection.';
-  textOutput.textContent = 'Processing…';
-
-  try {
-    const mod = await getTesseractModule();
-    const worker = await mod.createWorker('eng');
-    let result;
-    try { result = await worker.recognize(file); }
-    finally { await worker.terminate(); }
-
-    const raw = result?.data?.text || '';
-    textOutput.textContent = raw || 'No readable text was found.';
-    const fields = parseRecognizedTradeText(raw);
-    const applied = [];
-
-    if (fields.pair) { $('pair').value = fields.pair; applied.push('pair'); }
-    if (fields.direction) { setTradeDirection(fields.direction); applied.push('direction'); }
-    if (fields.risk) { $('risk').value = fields.risk; applied.push('risk'); }
-    if (fields.payout) { $('payout').value = fields.payout; applied.push('payout'); }
-    if (fields.entryTimeframe && [...$('entryTimeframe').options].some(o => o.value === fields.entryTimeframe || o.textContent === fields.entryTimeframe)) { $('entryTimeframe').value = fields.entryTimeframe; applied.push('entry timeframe'); }
-    if (fields.tradeDate) {
-      const current = $('tradeDate').value || nowLocalInput();
-      $('tradeDate').value = fields.tradeDate + 'T' + current.slice(11, 16);
-      applied.push('date');
-    }
-
-    // Preserve the recognition screenshot with the trade unless already attached.
-    const data = await readFileAsDataURL(file);
-    if (U.isDataImage(data) && !state.pendingShots.some(s => s.name === file.name && s.data === data)) {
-      state.pendingShots.push({ name: file.name, data, tf: fields.entryTimeframe || '', reasonIds: [] });
-      renderShotMeta();
-    }
-
-    status.textContent = applied.length
-      ? 'Recognition finished. Suggested fields: ' + applied.join(', ') + '. Review every field before saving.'
-      : 'Text was extracted, but no supported trade fields could be confidently identified. Review the recognized text and fill the form manually.';
-  } catch (err) {
-    status.textContent = 'Recognition failed: ' + (err?.message || String(err)) + '. Check your internet connection and try again.';
-    showError('Screenshot recognition failed: ' + (err?.message || String(err)));
-  } finally {
-    button.disabled = false;
-    button.textContent = 'Read Screenshot & Fill Trade Form';
-  }
+  $('lbImg').style.transform = `translate(${lbX}px,${lbY}px) scale(${lbScale})`;
 }
 
 /* ---------- event wiring ---------- */
@@ -1589,38 +1219,31 @@ function bindEvents() {
   });
 
   $('tradeForm').addEventListener('submit', saveTrade);
+
   document.querySelectorAll('[data-result]').forEach(button => {
     button.addEventListener('click', () => setTradeResult(button.dataset.result));
   });
+
   document.querySelectorAll('[data-direction]').forEach(button => {
     button.addEventListener('click', () => setTradeDirection(button.dataset.direction));
   });
+
   $('clearForm').addEventListener('click', clearForm);
   $('cancelEdit').addEventListener('click', clearForm);
 
-  $('recognitionScreenshot').addEventListener('change', () => {
-    const file = $('recognitionScreenshot').files?.[0];
-    const preview = $('recognitionPreview');
-    if (!file) { preview.style.display = 'none'; preview.removeAttribute('src'); return; }
-    preview.src = URL.createObjectURL(file);
-    preview.style.display = 'block';
-    $('recognitionStatus').textContent = 'Screenshot selected. Tap Read Screenshot & Fill Trade Form.';
-  });
-  $('recognizeScreenshot').addEventListener('click', recognizeScreenshot);
-
+  // Manual screenshot attachments remain available. No OCR or automatic reading.
   $('screenshots').addEventListener('change', async e => {
     const files = [...e.target.files];
 
-    for (const f of files) {
-      if (!f.type.startsWith('image/')) continue;
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
 
       try {
-        const data = await readFileAsDataURL(f);
-
+        const data = await readFileAsDataURL(file);
         if (!U.isDataImage(data)) continue;
 
         state.pendingShots.push({
-          name: f.name,
+          name: file.name,
           data,
           tf: '',
           reasonIds: []
@@ -1631,8 +1254,6 @@ function bindEvents() {
     }
 
     renderShotMeta();
-
-    // Allow selecting the same file again after removing it.
     e.target.value = '';
   });
 
@@ -1659,20 +1280,15 @@ function bindEvents() {
   });
 
   $('shotMeta').addEventListener('change', e => {
-    const t = e.target;
+    const target = e.target;
 
-    if (t.matches('select[data-action="shot-tf"]')) {
-      const i = Number(t.dataset.idx);
+    if (target.matches('select[data-action="shot-tf"]')) {
+      const i = Number(target.dataset.idx);
+      if (state.pendingShots[i]) state.pendingShots[i].tf = target.value;
+    } else if (target.matches('select[data-action="shot-reasons"]')) {
+      const i = Number(target.dataset.idx);
       if (state.pendingShots[i]) {
-        state.pendingShots[i].tf = t.value;
-      }
-    } else if (t.matches('select[data-action="shot-reasons"]')) {
-      const i = Number(t.dataset.idx);
-
-      if (state.pendingShots[i]) {
-        state.pendingShots[i].reasonIds = [
-          ...t.selectedOptions
-        ].map(o => o.value);
+        state.pendingShots[i].reasonIds = [...target.selectedOptions].map(o => o.value);
       }
     }
   });
@@ -1684,16 +1300,26 @@ function bindEvents() {
     searchTimer = setTimeout(renderHistory, 150);
   });
 
-  ['historyPairFilter','historyDirectionFilter','historyEntryTfFilter','historySessionFilter','historyFromDate','historyToDate']
-    .forEach(id => $(id).addEventListener('change', renderHistory));
+  [
+    'historyPairFilter','historyDirectionFilter','historyEntryTfFilter',
+    'historySessionFilter','historyFromDate','historyToDate'
+  ].forEach(id => $(id).addEventListener('change', renderHistory));
 
   $('clearHistoryFilters').addEventListener('click', () => {
-    ['historyPairFilter','historyDirectionFilter','historyEntryTfFilter','historySessionFilter'].forEach(id => { $(id).value = 'ALL'; });
+    [
+      'historyPairFilter','historyDirectionFilter',
+      'historyEntryTfFilter','historySessionFilter'
+    ].forEach(id => { $(id).value = 'ALL'; });
+
     $('historyFromDate').value = '';
     $('historyToDate').value = '';
     $('historySearch').value = '';
     state.historyFilter = 'ALL';
-    document.querySelectorAll('#historyTabs button').forEach(x => x.classList.toggle('active', x.dataset.filter === 'ALL'));
+
+    document.querySelectorAll('#historyTabs button').forEach(x => {
+      x.classList.toggle('active', x.dataset.filter === 'ALL');
+    });
+
     renderHistory();
   });
 
@@ -1702,15 +1328,13 @@ function bindEvents() {
     if (!b) return;
 
     state.historyFilter = b.dataset.filter;
-
     document.querySelectorAll('#historyTabs button').forEach(x => {
       x.classList.toggle('active', x === b);
     });
-
     renderHistory();
   });
 
-  // One delegated handler supports uploaded previews and history thumbnails.
+  // Screenshot thumbnails open in the existing manual viewer.
   document.body.addEventListener('click', e => {
     const img = e.target.closest('img[data-lightbox]');
     if (img) openLightbox(img.getAttribute('src'));
@@ -1719,7 +1343,6 @@ function bindEvents() {
   $('saveSettings').addEventListener('click', saveSettings);
   $('reasonForm').addEventListener('submit', addReason);
   $('txForm').addEventListener('submit', addTransaction);
-
   $('exportBtn').addEventListener('click', exportBackup);
   $('exportCsvBtn').addEventListener('click', exportTradesCsv);
   $('importFile').addEventListener('change', importBackup);
@@ -1732,13 +1355,7 @@ function bindEvents() {
 
   $('lightbox').addEventListener('wheel', e => {
     e.preventDefault();
-
-    lbScale = clamp(
-      lbScale * (e.deltaY < 0 ? 1.1 : 0.9),
-      0.5,
-      6
-    );
-
+    lbScale = clamp(lbScale * (e.deltaY < 0 ? 1.1 : 0.9), 0.5, 6);
     applyLightboxTransform();
   }, { passive: false });
 
@@ -1746,21 +1363,17 @@ function bindEvents() {
     if (e.target !== $('lbImg')) return;
 
     lbDragging = true;
-
     lbStart = {
       x: e.clientX - lbX,
       y: e.clientY - lbY
     };
-
     $('lbImg').setPointerCapture(e.pointerId);
   });
 
   $('lightbox').addEventListener('pointermove', e => {
     if (!lbDragging) return;
-
     lbX = e.clientX - lbStart.x;
     lbY = e.clientY - lbStart.y;
-
     applyLightboxTransform();
   });
 
@@ -1773,21 +1386,17 @@ function bindEvents() {
   });
 
   let lastTap = 0;
-
   $('lightbox').addEventListener('touchend', () => {
     const now = Date.now();
 
     if (now - lastTap < 300) {
       lbScale = lbScale > 1 ? 1 : 2;
-
       if (lbScale === 1) {
         lbX = 0;
         lbY = 0;
       }
-
       applyLightboxTransform();
     }
-
     lastTap = now;
   });
 
@@ -1799,21 +1408,19 @@ function bindEvents() {
 /* ---------- load storage ---------- */
 
 async function reloadState() {
-  const [
-    trades,
-    reasons,
-    transactions,
-    settings
-  ] = await Promise.all([
+  const [trades, reasons, transactions, settings] = await Promise.all([
     S.getAllTrades(),
     S.getAllReasons(),
     S.getAllTransactions(),
     S.getSettings()
   ]);
 
-  state.trades = (trades || []).map(t => ({ ...t, numberEntries: entryCount(t) }));
+  state.trades = (trades || []).map(t => ({
+    ...t,
+    numberEntries: entryCount(t)
+  }));
 
-  state.reasons = (reasons && reasons.length)
+  state.reasons = reasons && reasons.length
     ? reasons
     : DEFAULT_REASONS.map((name, i) =>
         U.sanitizeReason({
@@ -1824,7 +1431,6 @@ async function reloadState() {
       );
 
   state.transactions = transactions || [];
-
   state.settings = settings || U.sanitizeSettings({});
 
   if (!reasons || reasons.length === 0) {
@@ -1836,7 +1442,7 @@ async function reloadState() {
   }
 }
 
-/* ---------- boot ---------- */
+/* ---------- startup ---------- */
 
 async function boot() {
   ensureAdjustmentOptions();
@@ -1845,12 +1451,10 @@ async function boot() {
   try {
     await S.init();
     await reloadState();
-
     setWritable(true);
     clearError();
   } catch (err) {
     setWritable(false);
-
     showError(
       'Storage could not be opened: ' +
       err.message +
@@ -1863,14 +1467,10 @@ async function boot() {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker
-        .register('service-worker.js')
-        .catch(() => {});
+      navigator.serviceWorker.register('service-worker.js').catch(() => {});
     });
   }
 }
-
-/* ---------- application startup ---------- */
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot, { once: true });
@@ -1889,4 +1489,4 @@ window.JarvisApp = {
   deleteTrade,
   exportBackup,
   importBackup
-};  
+};
