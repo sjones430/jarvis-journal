@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -10,9 +11,11 @@
 <title>Jarvis</title>
 <style>
 :root{--bg:#050914;--panel:#10182b;--line:#263653;--blue:#087cff;--cyan:#20baff;--green:#00d889;--red:#ff405b;--muted:#9aa9c2;--text:#f4f7ff}
-*{box-sizing:border-box}html,body{background:#030711}
+*{box-sizing:border-box}
+html,body{background:#030711}
 body{margin:0;background:radial-gradient(ellipse at 50% -16%,#142746 0,#070d1b 46%,#030711 100%);color:var(--text);font:14px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh;padding-bottom:88px}
-button,input,select,textarea{font:inherit}button{cursor:pointer;color:inherit}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer;color:inherit}
 .app{max-width:430px;margin:auto;padding:9px 9px 24px}
 .brand{display:flex;align-items:center;gap:10px;padding:2px 4px 11px;border-bottom:1px solid #1c2e4b;margin-bottom:10px}
 .brand .logo{flex:0 0 58px;width:58px;height:58px;filter:drop-shadow(0 0 8px #20baff55);object-fit:cover;border-radius:50%;border:2px solid #263958}
@@ -85,7 +88,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
 .result-choice.draw.active{background:#665014;border-color:#facc15;color:#ffe36b}
 .result-choice.loss.active{background:#541b2b;border-color:#ff405b;color:#ff9bad}
 .result-choice.open.active{background:#3a2f14;border-color:#d6a638;color:#ffd479}
-.direction-picker{display:grid;grid-template-columns:1fr;gap:6px}
+.direction-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .direction-choice{width:100%;min-height:43px;padding:10px 8px;border:1px solid #30476c;background:#101b30;border-radius:10px;font-weight:800;color:#dce7f7}
 .direction-choice.buy.active{background:#075438;border-color:#00d889;color:#72f5bd}
 .direction-choice.sell.active{background:#541b2b;border-color:#ff405b;color:#ff9bad}
@@ -104,22 +107,13 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
 #lightbox.show{display:flex}
 #lightbox img{max-width:92vw;max-height:88vh;transform-origin:center;transition:transform .05s;user-select:none;-webkit-user-drag:none}
 #lbClose{position:absolute;top:14px;right:14px;background:#111f38;border:1px solid #33507a;color:#fff;width:44px;height:44px;border-radius:50%;font-size:20px}
-.ocr-panel{border:1px solid #285078;background:linear-gradient(145deg,#10243b,#0a1425);border-radius:12px;padding:11px;margin:10px 0}
-.ocr-preview{display:none;max-width:100%;max-height:180px;object-fit:contain;border:1px solid #30476c;border-radius:9px;margin-top:8px}
-.ocr-status{font-size:11px;color:#b9d7f5;margin-top:8px;white-space:pre-wrap}
-.ocr-text{max-height:140px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;color:#aebed4;background:#07101e;padding:8px;border-radius:8px}
-.ocr-review-note{font-size:11px;color:#ffe08a;margin-top:8px}
-@media(max-width:380px){.formgrid,.checkgrid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
 <div class="app">
   <header class="brand">
     <img src="icons/icon-192.png" alt="Jarvis Logo" class="logo">
-    <div>
-      <h1>JARVIS</h1>
-      <small>Track · Analyze · Improve</small>
-    </div>
+    <div><h1>JARVIS</h1><small>Track · Analyze · Improve</small></div>
   </header>
   <div id="errorBanner" role="alert"></div>
   <nav class="nav" id="nav" aria-label="Primary">
@@ -132,6 +126,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
   </nav>
   <main>
     <header class="top"><div><h2 id="pageTitle">Dashboard</h2><p id="pageSub">Your trading performance at a glance.</p></div><span class="pill">JOURNAL</span></header>
+
     <section id="dashboard" class="section active">
       <div class="hero-balance"><small>Account Balance</small><strong id="accountBalance">$0.00</strong><div class="trend" id="balanceChange">● Track your progress</div></div>
       <div class="stats" id="stats"></div>
@@ -142,6 +137,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
       <div class="panel"><h3>Best Currency Pair</h3><div id="bestPair"></div></div>
       <button class="btn primary" style="width:100%;margin-top:6px" type="button" data-goto="log">＋ Log Trade</button>
     </section>
+
     <section id="log" class="section">
       <div class="notice">One trade can contain multiple reasons, timeframes, and screenshots. Screenshots stay attached to this trade and their selected timeframe/reasons.</div>
       <form id="tradeForm" class="panel" novalidate>
@@ -150,12 +146,14 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
         <div class="formgrid">
           <div class="field"><label>Currency pair</label><input id="pair" placeholder="EUR/USD" required maxlength="40"></div>
           <div class="field"><label>Date and time</label><input id="tradeDate" type="datetime-local" required></div>
+
           <div class="field"><label>Direction</label><input type="hidden" id="direction" value="BUY">
             <div class="direction-picker" id="directionPicker" role="group" aria-label="Trade direction">
               <button type="button" class="direction-choice buy active" data-direction="BUY">BUY</button>
               <button type="button" class="direction-choice sell" data-direction="SELL">SELL</button>
             </div>
           </div>
+
           <div class="field"><label>Trade result</label><input id="result" type="hidden" value="WIN">
             <div class="result-picker" id="resultPicker" role="group" aria-label="Trade result">
               <button type="button" class="result-choice win active" data-result="WIN">WIN</button>
@@ -164,8 +162,10 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
             </div>
             <button type="button" class="result-choice open" data-result="OPEN" style="margin-top:6px;width:100%">OPEN / UNRESOLVED</button>
           </div>
-          <div class="field"><label>Amount risked (total for this setup)</label><input id="risk" type="number" min="0" step="0.01" placeholder="10"></div>
-          <div class="field"><label>Number of entries</label><input id="numberEntries" type="number" min="1" max="99" step="1" value="1"><small class="muted">Count separate entries for this one setup. Total risk is recorded separately.</small></div>
+
+          <div class="field"><label>Amount risked per entry</label><input id="risk" type="number" min="0" step="0.01" placeholder="10"></div>
+          <div class="field"><label>Number of entries</label><input id="numberEntries" type="number" min="1" max="99" step="1" value="1"></div>
+
           <div class="field"><label>Payout (%)</label><input id="payout" type="number" min="0" step="0.1" value="80"></div>
           <div class="field"><label>Confidence (1–10)</label><input id="confidence" type="number" min="1" max="10" placeholder="7"></div>
           <div class="field"><label>Session</label><select id="session"><option>London</option><option>New York</option><option>Asian</option><option>Sydney</option><option>London/New York overlap</option><option>Custom</option></select></div>
@@ -175,16 +175,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
           <div class="field"><label>Setup quality (1–10)</label><input id="setupQuality" type="number" min="1" max="10"></div>
           <div class="field"><label>Execution quality (1–10)</label><input id="executionQuality" type="number" min="1" max="10"></div>
         </div>
-        <div class="ocr-panel">
-          <h3 style="margin:0 0 6px">Pocket Option Screenshot Recognition</h3>
-          <p class="muted" style="font-size:11px;margin:0 0 8px">Jarvis uses on-device text recognition (OCR) to suggest visible trade details. It does not predict trades or give trading signals. Check every suggested value before saving.</p>
-          <div class="field"><label for="recognitionScreenshot">Choose a Pocket Option screenshot</label><input id="recognitionScreenshot" type="file" accept="image/*"></div>
-          <img id="recognitionPreview" class="ocr-preview" alt="Screenshot selected for text recognition">
-          <button class="btn primary" id="recognizeScreenshot" type="button" style="width:100%">Read Screenshot &amp; Fill Trade Form</button>
-          <div id="recognitionStatus" class="ocr-status" aria-live="polite">Choose a screenshot, then run recognition. The extracted values will be placed in the editable trade fields below.</div>
-          <div class="ocr-review-note">Important: OCR can misread numbers or direction. Review the pair, BUY/SELL, amount, payout, timeframe, and date before saving.</div>
-          <details style="margin-top:8px"><summary class="muted" style="font-size:11px;cursor:pointer">Show recognized text</summary><pre id="recognitionText" class="ocr-text">No text recognized yet.</pre></details>
-        </div>
+
         <div class="field"><label>Reasons (select all that apply)</label><div id="reasonChecks" class="checkgrid"></div></div>
         <div class="field"><label>Timeframes used</label><div id="tfChecks" class="checkgrid"></div></div>
         <div class="field"><label>Screenshot attachments (optional)</label><input id="screenshots" type="file" accept="image/*" multiple><small class="muted">For each screenshot, add timeframe and associated reasons after selecting files. Images are stored locally.</small><div id="shotMeta"></div></div>
@@ -192,6 +183,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
         <div class="row"><button class="btn primary" type="submit">Save Trade</button><button class="btn" type="button" id="cancelEdit">Cancel edit</button></div>
       </form>
     </section>
+
     <section id="history" class="section">
       <div class="panel">
         <div class="row between"><h3>Trade History</h3></div>
@@ -209,6 +201,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
         <div id="historyTable"></div>
       </div>
     </section>
+
     <section id="analytics" class="section">
       <div class="panel"><h3>Analytics Overview</h3><div class="cards" id="analyticsTop"></div></div>
       <div class="panel"><h3>Daily Performance by Number of Trades</h3><p class="muted">Compare results on days when you take different numbers of trades. Open trades count toward the daily trade total; win rate and P/L use completed trades only.</p><div id="dailyTradePerformance"></div></div>
@@ -223,10 +216,12 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
       <div class="panel"><h3>Execution &amp; Setup Quality</h3><div id="qualityStats"></div></div>
       <div class="panel"><h3>Risk &amp; Losing Streaks</h3><div id="riskStats"></div></div>
     </section>
+
     <section id="setups" class="section">
       <div class="panel"><div class="row between"><h3>Your Setups</h3><span class="pill">Ranked by journal results</span></div><p class="muted">Exact reason combinations are grouped together. A different combination is a separate setup.</p><div id="setupCards"></div></div>
       <div class="panel"><h3>Multi-Timeframe Folder</h3><div id="multiStats" class="cards"></div><div id="multiHistory" style="margin-top:12px"></div></div>
     </section>
+
     <section id="settings" class="section">
       <div class="panel"><h3>Account Settings</h3>
         <div class="formgrid">
@@ -238,15 +233,18 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
         <p class="muted">Only record deposits and withdrawals that happen after this opening balance is set. Do not enter historical deposits already included in your opening balance.</p>
         <button class="btn primary" id="saveSettings" type="button">Save Preferences</button>
       </div>
+
       <div class="panel"><h3>Trading Reasons</h3><p class="muted">Add, rename, archive, or reactivate setup reasons. Historical trades keep their reason IDs and name snapshots.</p>
         <form id="reasonForm" class="row"><input id="newReason" class="search" placeholder="Add a trading reason" style="max-width:360px" maxlength="200"><button class="btn primary" type="submit">Add Reason</button></form>
         <div id="reasonList" style="margin-top:12px"></div>
       </div>
+
       <div class="panel"><h3>Backup &amp; Restore</h3><p class="muted">Export a complete JSON backup with trades, reason library, screenshots, transactions, and settings.</p>
         <div class="row"><button class="btn primary" id="exportBtn" type="button">Export Full Backup (JSON)</button><button class="btn" id="exportCsvBtn" type="button">Export Trades (CSV)</button><label class="btn" for="importFile">Restore Backup</label><input id="importFile" type="file" accept="application/json" hidden></div>
         <p class="muted" style="font-size:11px;margin-top:9px">CSV opens in Excel or Google Sheets and can also be uploaded to ChatGPT for analysis. It includes trade details and calculated P/L. JSON remains the full restore backup, including screenshots and settings.</p>
         <p class="muted" style="font-size:11px;margin-top:12px">Data is stored on this device/browser. Automatic and encrypted backups, cloud sync, and native APK packaging are not implemented in this build.</p>
       </div>
+
       <div class="panel"><h3>Account Transactions</h3><p class="muted">Deposits increase your balance; withdrawals decrease it automatically. Use Adjustment to add a manual increase or Adjustment (Decrease) to deduct a manual amount.</p>
         <form id="txForm" class="formgrid">
           <div class="field"><label>Type</label><select id="txType"><option>Deposit</option><option>Withdrawal</option><option>Adjustment</option></select></div>
@@ -260,13 +258,13 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
     </section>
   </main>
 </div>
+
 <div id="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot viewer">
   <button id="lbClose" type="button" aria-label="Close">×</button>
   <img id="lbImg" alt="Screenshot enlarged">
 </div>
 
 <script src="storage.js"></script>
-
 <script>
 (function () {
   function showDiagnostic(message) {
@@ -276,7 +274,6 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
       banner.classList.add('show');
     }
   }
-
   window.addEventListener('error', function (event) {
     showDiagnostic(
       (event.message || 'Unknown JavaScript error') +
@@ -284,7 +281,6 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
       (event.lineno ? ' | Line: ' + event.lineno : '')
     );
   });
-
   window.addEventListener('unhandledrejection', function (event) {
     showDiagnostic(
       'Promise error: ' +
@@ -293,8 +289,6 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
   });
 })();
 </script>
-
 <script type="module" src="app.js"></script>
-
 </body>
 </html>
