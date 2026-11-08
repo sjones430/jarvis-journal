@@ -1,7 +1,6 @@
-
 'use strict';
 
-const CACHE_VERSION = 'jarvis-v3';
+const CACHE_VERSION = 'jarvis-v4';
 
 const APP_FILES = [
   './',
@@ -39,7 +38,6 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
 
   if (url.origin !== self.location.origin) return;
-
   const isAppFile =
     url.pathname.endsWith('/app.js') ||
     url.pathname.endsWith('/storage.js') ||
@@ -52,7 +50,6 @@ self.addEventListener('fetch', event => {
         .then(response => {
           if (response.ok) {
             const copy = response.clone();
-
             caches.open(CACHE_VERSION)
               .then(cache => cache.put(request, copy))
               .catch(() => {});
@@ -75,7 +72,6 @@ self.addEventListener('fetch', event => {
 
     return;
   }
-
   event.respondWith(
     caches.match(request)
       .then(cached => cached || fetch(request))
