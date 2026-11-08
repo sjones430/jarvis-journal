@@ -1083,6 +1083,215 @@ function editTrade(id) {
     'result',
     'risk',
     'payout',
+    'confidence',
+    'session',
+    'condition',
+    'category',
+    'entryTimeframe',
+    'setupQuality',
+    'executionQuality',
+    'notes'
+  ].forEach(k => {
+    if (k !== 'result') $(k).value = t[k] ?? '';
+  });
+  setTradeDirection(t.direction || 'CALL');
+  setTradeResult(t.result || 'OPEN');
+
+  $('tradeDate').value = t.date;
+
+  renderChecks();
+
+  document.querySelectorAll('input[name="reason"]').forEach(x => {
+    x.checked = (t.reasonIds || []).includes(x.value);
+  });
+
+  document.querySelectorAll('input[name="tf"]').forEach(x => {
+    x.checked = (t.timeframes || []).includes(x.value);
+  });
+
+  state.pendingShots = Array.isArray(t.screenshots)
+    ? t.screenshots.map(s => ({
+        ...s,
+        reasonIds: Array.isArray(s.reasonIds) ? [...s.reasonIds] : []
+      }))
+    : [];
+
+  renderShotMeta();
+}
+
+async function deleteTrade(id) {
+  if (!confirm('Delete this trade and its screenshots?')) return;
+
+  try {
+    await S.deleteTrade(id);
+    state.trades = state.trades.filter(t => t.id !== id);
+    renderAll();
+  } catch (err) {
+    showError('Could not delete: ' + err.message);
+  }
+}
+
+/* ---------- settings save ---------- */
+
+async function saveSettings() {
+  const s = U.sanitizeSettings({
+    startingBalance: $('startingBalance').value,
+    defaultPayout: $('defaultPayout').value,
+    currency: $('currency').value,
+    defaultSession: $('defaultSession').value
+  });
+
+  try {
+    await S.putSettings(s);
+    state.settings = s;
+    renderAll();
+    alert('Preferences saved.');
+  } catch (err) {
+    showError('Could not save settings: ' + err.message);
+  }
+}
+
+/* ---------- reasons add/rename/archive ---------- */
+
+async function addReason(e) {
+  e.preventDefault();
+
+  const name = $('newReason').value.trim();
+
+  if (!name) return;
+
+  if (
+    state.reasons.some(
+      r => r.name.toLowerCase() === name.toLowerCase()
+    )
+  ) {
+    return alert('That reason already exists.');
+  }
+
+  const r = U.sanitizeReason({
+    id: U.uid(),
+    name,
+    active: true
+  });
+
+  try {
+    await S.putReason(r);
+    state.reasons.push(r);
+    $('newReason').value = '';
+    renderAll();
+  } catch (err) {
+    showError('Could not add reason: ' + err.message);
+  }
+}
+
+async function renameReason(id) {
+  const r = reasonById(id);
+  if (!r) return;
+
+  const n = prompt('Rename reason', r.name);
+  if (!n || !n.trim()) return;
+
+  const next = U.sanitizeReason({
+    ...r,
+    name: n.trim()
+  });
+
+  try {
+    await S.putReason(next);
+    r.name = next.name;
+
+    const updates = [];
+
+    state.trades.forEach(t => {
+      const usedOnTrade = (t.reasonIds || []).includes(id);
+      const usedOnScreenshot = (t.screenshots || []).some(
+        s => (s.reasonIds || []).includes(id)
+      );
+
+      if (usedOnTrade || usedOnScreenshot) {
+        t.reasonNames = t.reasonNames || {};
+        t.reasonNames[id] = next.name;
+        t.updatedAt = Date.now();
+        updates.push(S.putTrade(t));
+      }
+    });
+
+    await Promise.all(updates);
+
+    renderAll();
+  } catch (err) {
+    showError('Could not rename: ' + err.message);
+  }
+}
+
+async function archiveReason(id) {
+  const r = reasonById(id);
+  if (!r) return;
+
+  const next = {
+    ...r,
+    active: !r.active
+  };
+
+  try {
+    await S.putReason(next);
+    r.active = next.active;
+    renderAll();
+  } catch (err) {
+    showError('Could not update reason: ' + err.message);
+  }
+}
+
+/* ---------- transactions ---------- */
+
+async function addTransaction(e) {
+  e.preventDefault();
+
+  const selectedType = $('txType').value;
+  const decrease = selectedType === 'Adjustment (Decrease)';
+
+  // Storage accepts only Deposit, Withdrawal, or Adjustment.
+  // The marker preserves the decrease distinction without changing storage.js.
+  const tx = U.sanitizeTransaction({
+    id: U.uid(),
+    type: decrease ? 'Adjustment' : selectedType,
+    amount: $('txAmount').value,
+    date: $('txDate').value,
+    note: (decrease ? DECREASE_ADJUSTMENT_MARKER : '') +
+      $('txNote').value
+  });
+
+  try {
+    await S.putTransaction(tx);
+    state.transactions.push(tx);
+    $('txForm').reset();
+    renderTx();
+    updateBalance();
+  } catch (err) {
+    showError('Could not add transaction: ' + err.message);
+  }
+}
+
+/* ---------- backup ---------- */
+
+async function exportBackup() {
+  try {
+    const payload = await S.exportAll();
+
+    const blob = new Blob(
+      [JSON.stringify(payload, null, 2)],
+      { type: 'application/json' }
+    );
+
+    const a = document.createElement('a');
+
+    a.href = URL.createObjectURL(blob);
+    a.download =
+      'jarvis-backup-' +
+      new Date().toISOString().slice(0, 10) +
+      '.json';
+
+    a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   } catch (err) {
     showError('Export failed: ' + err.message);
