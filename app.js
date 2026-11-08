@@ -1,3 +1,4 @@
+
 'use strict';
 
 const DEFAULT_REASONS = [
@@ -7,24 +8,16 @@ const DEFAULT_REASONS = [
   "Supply","Demand","OrderBlock (OB)","Marubozu candle","Third Touch Breakout (3TBO)",
   "Gap Up/Gap Down","ABC break","Round Number","Closed on Support","Closed on Resistance"
 ];
+
 const TIMEFRAMES = ["1M","2M","3M","5M","10M","15M","30M","1H","2H","4H","1D"];
+
+const DECREASE_ADJUSTMENT_MARKER = '[JARVIS_ADJUSTMENT_DECREASE]';
 
 const S = window.JarvisStorage;
 const U = window.JarvisUtil;
 const { num, clamp, safeStr } = U;
 
 const $ = id => document.getElementById(id);
-
-const el = (tag, attrs = {}, html) => {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') n.className = v;
-    else if (k === 'dataset') Object.assign(n.dataset, v);
-    else n.setAttribute(k, v);
-  }
-  if (html != null) n.innerHTML = html;
-  return n;
-};
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({
   '&':'&amp;',
@@ -53,6 +46,7 @@ const state = {
 
 const money = n => {
   const v = Number.isFinite(Number(n)) ? Number(n) : 0;
+
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
@@ -67,9 +61,11 @@ const pnl = t => {
   if (t.result === 'WIN') {
     return num(t.risk) * clamp(num(t.payout), 0, 1000) / 100;
   }
+
   if (t.result === 'LOSS') {
     return -clamp(num(t.risk), 0, 1e9);
   }
+
   return 0;
 };
 
@@ -89,12 +85,15 @@ const reasonsOf = (t, cache) => {
 
   const names = (t.reasonIds || []).map(id => {
     const live = reasonById(id);
+
     if (live) return live.name;
     if (t.reasonNames && t.reasonNames[id]) return t.reasonNames[id];
+
     return 'Archived reason';
   });
 
   if (cache) cache.set(t.id, names);
+
   return names;
 };
 
@@ -105,12 +104,88 @@ const sampleLabel = n =>
   n < 100 ? 'Stronger evidence' :
   'Larger sample';
 
+/* ---------- transaction helpers ---------- */
+
+function isDecreaseAdjustment(t) {
+  return t &&
+    t.type === 'Adjustment' &&
+    String(t.note || '').startsWith(DECREASE_ADJUSTMENT_MARKER);
+}
+
+function transactionEffect(t) {
+  const amount = Math.abs(num(t.amount));
+
+  if (t.type === 'Withdrawal' || isDecreaseAdjustment(t)) {
+    return -amount;
+  }
+
+  return amount;
+}
+
+function transactionDisplayType(t) {
+  return isDecreaseAdjustment(t)
+    ? 'Adjustment (Decrease)'
+    : t.type;
+}
+
+function transactionDisplayNote(t) {
+  return String(t.note || '')
+    .replace(DECREASE_ADJUSTMENT_MARKER, '')
+    .trim();
+}
+
+function ensureAdjustmentOptions() {
+  const select = $('txType');
+  if (!select) return;
+
+  const exists = [...select.options].some(
+    o => o.value === 'Adjustment (Decrease)' ||
+         o.textContent === 'Adjustment (Decrease)'
+  );
+
+  if (!exists) {
+    const option = document.createElement('option');
+    option.value = 'Adjustment (Decrease)';
+    option.textContent = 'Adjustment (Decrease)';
+    select.appendChild(option);
+  }
+}
+
+/* ---------- screenshot helpers ---------- */
+
+function renderScreenshotThumbs(t) {
+  const shots = Array.isArray(t.screenshots) ? t.screenshots : [];
+
+  if (!shots.length) {
+    return '<span class="muted">—</span>';
+  }
+
+  return `<div class="thumbs" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    ${shots.map((s, i) => `
+      <img
+        data-lightbox
+        src="${esc(s.data)}"
+        alt="Trade screenshot ${i + 1}"
+        title="${esc(
+          (s.tf || 'Unspecified timeframe') +
+          (s.reasonIds?.length ? ' · ' + s.reasonIds.map(id =>
+            reasonById(id)?.name || t.reasonNames?.[id] || 'Archived reason'
+          ).join(', ') : '')
+        )}"
+        style="width:58px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #263653;cursor:zoom-in"
+      >
+    `).join('')}
+  </div>`;
+}
+
 function showError(msg) {
   const b = $('errorBanner');
+
   if (!b) {
     console.error(msg);
     return;
   }
+
   b.textContent = msg;
   b.classList.add('show');
 }
@@ -166,11 +241,17 @@ function renderChecks() {
   const active = state.reasons.filter(r => r.active);
 
   $('reasonChecks').innerHTML = active.map(r =>
-    `<label class="check"><input type="checkbox" name="reason" value="${esc(r.id)}">${esc(r.name)}</label>`
+    `<label class="check">
+      <input type="checkbox" name="reason" value="${esc(r.id)}">
+      ${esc(r.name)}
+    </label>`
   ).join('') || '<span class="muted">No active reasons. Add some in Settings.</span>';
 
   $('tfChecks').innerHTML = TIMEFRAMES.map(t =>
-    `<label class="check"><input type="checkbox" name="tf" value="${esc(t)}">${esc(t)}</label>`
+    `<label class="check">
+      <input type="checkbox" name="tf" value="${esc(t)}">
+      ${esc(t)}
+    </label>`
   ).join('');
 }
 
@@ -189,7 +270,10 @@ function renderDashboard() {
   ];
 
   $('stats').innerHTML = statsData.map(([label, val, cls]) =>
-    `<div class="stat"><label>${esc(label)}</label><strong class="${cls}">${esc(val)}</strong></div>`
+    `<div class="stat">
+      <label>${esc(label)}</label>
+      <strong class="${cls}">${esc(val)}</strong>
+    </div>`
   ).join('');
 
   const cache = new Map();
@@ -199,16 +283,23 @@ function renderDashboard() {
     .slice(0, 6);
 
   $('recent').innerHTML = recent.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Pair</th><th>Result</th><th>Reasons</th><th>P/L</th></tr></thead><tbody>${
-        recent.map(t =>
-          `<tr>
-            <td>${esc(t.pair)}</td>
-            <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
-            <td>${reasonsOf(t, cache).length}</td>
-            <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
-          </tr>`
-        ).join('')
-      }</tbody></table></div>`
+    ? `<div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>Pair</th><th>Result</th><th>Reasons</th><th>P/L</th></tr>
+          </thead>
+          <tbody>
+            ${recent.map(t =>
+              `<tr>
+                <td>${esc(t.pair)}</td>
+                <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
+                <td>${reasonsOf(t, cache).length}</td>
+                <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
+              </tr>`
+            ).join('')}
+          </tbody>
+        </table>
+      </div>`
     : `<div class="empty">No trades yet. Log your first trade to begin building your journal.</div>`;
 
   $('snapshot').innerHTML =
@@ -226,7 +317,8 @@ function renderDashboard() {
     .sort((a, b) => winRate(b[1]) - winRate(a[1]))[0];
 
   $('bestPair').innerHTML = best
-    ? `<b>${esc(best[0])}</b><div class="muted">${winRate(best[1]).toFixed(1)}% win rate · ${best[1].length} trades · ${sampleLabel(best[1].length)}</div>`
+    ? `<b>${esc(best[0])}</b>
+       <div class="muted">${winRate(best[1]).toFixed(1)}% win rate · ${best[1].length} trades · ${sampleLabel(best[1].length)}</div>`
     : '<span class="muted">No pair data yet.</span>';
 
   const comboMap = {};
@@ -240,7 +332,8 @@ function renderDashboard() {
     .sort((a, b) => winRate(b[1]) - winRate(a[1]))[0];
 
   $('topSetup').innerHTML = top
-    ? `<b>${esc(top[0])}</b><div class="muted">${winRate(top[1]).toFixed(1)}% win rate · ${top[1].length} trades · ${sampleLabel(top[1].length)}</div>`
+    ? `<b>${esc(top[0])}</b>
+       <div class="muted">${winRate(top[1]).toFixed(1)}% win rate · ${top[1].length} trades · ${sampleLabel(top[1].length)}</div>`
     : '<span class="muted">No setup data yet.</span>';
 
   updateBalance();
@@ -288,23 +381,41 @@ function renderHistory() {
     .sort((a, b) => b.createdAt - a.createdAt);
 
   $('historyTable').innerHTML = arr.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th>Pair</th><th>Dir</th><th>Result</th><th>Reasons</th><th>Cat</th><th>P/L</th><th>Actions</th></tr></thead><tbody>${
-        arr.map(t =>
-          `<tr>
-            <td>${esc(new Date(t.date).toLocaleString())}</td>
-            <td>${esc(t.pair)}</td>
-            <td>${esc(t.direction)}</td>
-            <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
-            <td>${reasonsOf(t, cache).length}</td>
-            <td>${t.category === 'Multi-timeframe' ? 'Multi-TF' : 'Single-TF'}</td>
-            <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
-            <td>
-              <button class="btn small" data-action="edit" data-id="${esc(t.id)}">✎</button>
-              <button class="btn small danger" data-action="delete" data-id="${esc(t.id)}">×</button>
-            </td>
-          </tr>`
-        ).join('')
-      }</tbody></table></div>`
+    ? `<div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Pair</th>
+              <th>Dir</th>
+              <th>Result</th>
+              <th>Reasons</th>
+              <th>Cat</th>
+              <th>Screenshots</th>
+              <th>P/L</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${arr.map(t =>
+              `<tr>
+                <td>${esc(new Date(t.date).toLocaleString())}</td>
+                <td>${esc(t.pair)}</td>
+                <td>${esc(t.direction)}</td>
+                <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
+                <td>${reasonsOf(t, cache).length}</td>
+                <td>${t.category === 'Multi-timeframe' ? 'Multi-TF' : 'Single-TF'}</td>
+                <td>${renderScreenshotThumbs(t)}</td>
+                <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
+                <td>
+                  <button class="btn small" data-action="edit" data-id="${esc(t.id)}">✎</button>
+                  <button class="btn small danger" data-action="delete" data-id="${esc(t.id)}">×</button>
+                </td>
+              </tr>`
+            ).join('')}
+          </tbody>
+        </table>
+      </div>`
     : '<div class="empty">No matching trades.</div>';
 }
 
@@ -327,21 +438,38 @@ function renderMulti() {
   const cache = new Map();
 
   $('multiHistory').innerHTML = a.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th>Pair</th><th>Timeframes</th><th>Reasons</th><th>Result</th><th>P/L</th><th>Edit</th></tr></thead><tbody>${
-        a.slice()
-          .sort((x, y) => y.createdAt - x.createdAt)
-          .map(t =>
-            `<tr>
-              <td>${esc(new Date(t.date).toLocaleString())}</td>
-              <td>${esc(t.pair)}</td>
-              <td>${esc((t.timeframes || []).join(' + '))}</td>
-              <td>${reasonsOf(t, cache).length}</td>
-              <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
-              <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
-              <td><button class="btn small" data-action="edit" data-id="${esc(t.id)}">✎</button></td>
-            </tr>`
-          ).join('')
-      }</tbody></table></div>`
+    ? `<div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Pair</th>
+              <th>Timeframes</th>
+              <th>Reasons</th>
+              <th>Screenshots</th>
+              <th>Result</th>
+              <th>P/L</th>
+              <th>Edit</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${a.slice()
+              .sort((x, y) => y.createdAt - x.createdAt)
+              .map(t =>
+                `<tr>
+                  <td>${esc(new Date(t.date).toLocaleString())}</td>
+                  <td>${esc(t.pair)}</td>
+                  <td>${esc((t.timeframes || []).join(' + '))}</td>
+                  <td>${reasonsOf(t, cache).length}</td>
+                  <td>${renderScreenshotThumbs(t)}</td>
+                  <td><span class="pill ${t.result.toLowerCase()}">${esc(t.result)}</span></td>
+                  <td class="${pnl(t) >= 0 ? 'green' : 'red'}">${money(pnl(t))}</td>
+                  <td><button class="btn small" data-action="edit" data-id="${esc(t.id)}">✎</button></td>
+                </tr>`
+              ).join('')}
+          </tbody>
+        </table>
+      </div>`
     : '<div class="empty">No multi-timeframe trades yet. Select "Multi-timeframe" when logging a trade.</div>';
 }
 
@@ -407,16 +535,21 @@ function renderAnalytics() {
     .sort((a, b) => b[1].length - a[1].length);
 
   $('byCombo').innerHTML = combos.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Exact combination</th><th>Trades</th><th>Win rate</th><th>Net P/L</th></tr></thead><tbody>${
-        combos.map(([k, a]) =>
-          `<tr>
-            <td>${esc(k)}</td>
-            <td>${a.length}</td>
-            <td>${winRate(a).toFixed(1)}%</td>
-            <td>${money(a.reduce((s, t) => s + pnl(t), 0))}</td>
-          </tr>`
-        ).join('')
-      }</tbody></table></div>`
+    ? `<div class="tablewrap">
+        <table>
+          <thead><tr><th>Exact combination</th><th>Trades</th><th>Win rate</th><th>Net P/L</th></tr></thead>
+          <tbody>
+            ${combos.map(([k, a]) =>
+              `<tr>
+                <td>${esc(k)}</td>
+                <td>${a.length}</td>
+                <td>${winRate(a).toFixed(1)}%</td>
+                <td>${money(a.reduce((s, t) => s + pnl(t), 0))}</td>
+              </tr>`
+            ).join('')}
+          </tbody>
+        </table>
+      </div>`
     : '<div class="empty">No resolved trades yet.</div>';
 
   const dims = [
@@ -570,7 +703,7 @@ function renderSetups() {
     : '<div class="empty">Log trades with reasons selected to build your setup library.</div>';
 }
 
-/* ---------- settings & reasons & tx ---------- */
+/* ---------- settings & reasons & transactions ---------- */
 
 function loadSettingsUI() {
   $('startingBalance').value = state.settings.startingBalance ?? 70;
@@ -593,12 +726,19 @@ function renderReasons() {
 
 function renderTx() {
   $('txList').innerHTML = state.transactions.length
-    ? [...state.transactions].reverse().map(t =>
-        `<div class="row between" style="padding:8px;border-bottom:1px solid #20344d">
-          <span>${esc(t.type)} · ${esc(t.date)} · ${esc(t.note || '')}</span>
-          <b>${money(t.amount)}</b>
-        </div>`
-      ).join('')
+    ? [...state.transactions].reverse().map(t => {
+        const effect = transactionEffect(t);
+        const sign = effect < 0 ? '−' : '+';
+
+        return `<div class="row between" style="padding:8px;border-bottom:1px solid #20344d">
+          <span>
+            ${esc(transactionDisplayType(t))} ·
+            ${esc(t.date)} ·
+            ${esc(transactionDisplayNote(t))}
+          </span>
+          <b class="${effect < 0 ? 'red' : 'green'}">${sign}${money(Math.abs(effect))}</b>
+        </div>`;
+      }).join('')
     : '<div class="empty">No account transactions recorded.</div>';
 }
 
@@ -607,7 +747,7 @@ function updateBalance() {
   const tradePL = resolved().reduce((s, t) => s + pnl(t), 0);
 
   const txTotal = state.transactions.reduce(
-    (s, t) => s + (t.type === 'Withdrawal' ? -num(t.amount) : num(t.amount)),
+    (s, t) => s + transactionEffect(t),
     0
   );
 
@@ -664,16 +804,18 @@ function renderShotMeta() {
         <b>${esc(s.name)}</b>
         <button type="button" class="btn small danger" data-action="remove-shot" data-idx="${i}">Remove</button>
       </div>
+
       <div class="formgrid">
         <div class="field">
           <label>Screenshot timeframe</label>
           <select data-action="shot-tf" data-idx="${i}">
             <option value="">Select</option>
             ${TIMEFRAMES.map(t =>
-              `<option ${s.tf === t ? 'selected' : ''}>${esc(t)}</option>`
+              `<option value="${esc(t)}" ${s.tf === t ? 'selected' : ''}>${esc(t)}</option>`
             ).join('')}
           </select>
         </div>
+
         <div class="field">
           <label>Associated reasons</label>
           <select multiple size="3" data-action="shot-reasons" data-idx="${i}">
@@ -683,7 +825,14 @@ function renderShotMeta() {
           </select>
         </div>
       </div>
-      <img src="${esc(s.data)}" alt="Screenshot preview" style="max-width:160px;max-height:90px;border-radius:7px">
+
+      <img
+        data-lightbox
+        src="${esc(s.data)}"
+        alt="Screenshot preview"
+        title="Tap to enlarge"
+        style="max-width:160px;max-height:90px;border-radius:7px;cursor:zoom-in"
+      >
     </div>`
   ).join('');
 }
@@ -704,7 +853,6 @@ function readFileAsDataURL(f) {
 async function saveTrade(e) {
   e.preventDefault();
 
-  // FIXED: The original file had an unterminated string here.
   if (!state.writable) {
     return showError('Storage is not available; cannot save.');
   }
@@ -712,6 +860,7 @@ async function saveTrade(e) {
   const id = $('editId').value || U.uid();
   const old = state.trades.find(t => t.id === id);
 
+  // These selections belong only to the trade itself.
   const reasonIds = [
     ...document.querySelectorAll('input[name="reason"]:checked')
   ].map(x => x.value);
@@ -720,13 +869,9 @@ async function saveTrade(e) {
     ...document.querySelectorAll('input[name="tf"]:checked')
   ].map(x => x.value);
 
-  for (const s of state.pendingShots) {
-    if (s.tf && !tfs.includes(s.tf)) tfs.push(s.tf);
-
-    for (const rid of (s.reasonIds || [])) {
-      if (!reasonIds.includes(rid)) reasonIds.push(rid);
-    }
-  }
+  // IMPORTANT:
+  // Screenshot timeframe and reason selections stay on each screenshot.
+  // They are deliberately NOT merged into trade-level timeframes/reasons.
 
   const reasonNames = {};
 
@@ -735,9 +880,9 @@ async function saveTrade(e) {
   });
 
   state.pendingShots.forEach(s => {
-    (s.reasonIds || []).forEach(id => {
-      const r = reasonById(id);
-      if (r) reasonNames[id] = r.name;
+    (s.reasonIds || []).forEach(rid => {
+      const r = reasonById(rid);
+      if (r) reasonNames[rid] = r.name;
     });
   });
 
@@ -821,7 +966,10 @@ function editTrade(id) {
   });
 
   state.pendingShots = Array.isArray(t.screenshots)
-    ? t.screenshots.map(s => ({ ...s }))
+    ? t.screenshots.map(s => ({
+        ...s,
+        reasonIds: Array.isArray(s.reasonIds) ? [...s.reasonIds] : []
+      }))
     : [];
 
   renderShotMeta();
@@ -911,7 +1059,12 @@ async function renameReason(id) {
     const updates = [];
 
     state.trades.forEach(t => {
-      if ((t.reasonIds || []).includes(id)) {
+      const usedOnTrade = (t.reasonIds || []).includes(id);
+      const usedOnScreenshot = (t.screenshots || []).some(
+        s => (s.reasonIds || []).includes(id)
+      );
+
+      if (usedOnTrade || usedOnScreenshot) {
         t.reasonNames = t.reasonNames || {};
         t.reasonNames[id] = next.name;
         t.updatedAt = Date.now();
@@ -950,12 +1103,18 @@ async function archiveReason(id) {
 async function addTransaction(e) {
   e.preventDefault();
 
+  const selectedType = $('txType').value;
+  const decrease = selectedType === 'Adjustment (Decrease)';
+
+  // Storage accepts only Deposit, Withdrawal, or Adjustment.
+  // The marker preserves the decrease distinction without changing storage.js.
   const tx = U.sanitizeTransaction({
     id: U.uid(),
-    type: $('txType').value,
+    type: decrease ? 'Adjustment' : selectedType,
     amount: $('txAmount').value,
     date: $('txDate').value,
-    note: $('txNote').value
+    note: (decrease ? DECREASE_ADJUSTMENT_MARKER : '') +
+      $('txNote').value
   });
 
   try {
@@ -1116,6 +1275,9 @@ function bindEvents() {
     }
 
     renderShotMeta();
+
+    // Allow selecting the same file again after removing it.
+    e.target.value = '';
   });
 
   document.body.addEventListener('click', e => {
@@ -1143,13 +1305,17 @@ function bindEvents() {
 
     if (t.matches('select[data-action="shot-tf"]')) {
       const i = Number(t.dataset.idx);
-      state.pendingShots[i].tf = t.value;
+      if (state.pendingShots[i]) {
+        state.pendingShots[i].tf = t.value;
+      }
     } else if (t.matches('select[data-action="shot-reasons"]')) {
       const i = Number(t.dataset.idx);
 
-      state.pendingShots[i].reasonIds = [
-        ...t.selectedOptions
-      ].map(o => o.value);
+      if (state.pendingShots[i]) {
+        state.pendingShots[i].reasonIds = [
+          ...t.selectedOptions
+        ].map(o => o.value);
+      }
     }
   });
 
@@ -1173,18 +1339,10 @@ function bindEvents() {
     renderHistory();
   });
 
+  // One delegated handler supports uploaded previews and history thumbnails.
   document.body.addEventListener('click', e => {
     const img = e.target.closest('img[data-lightbox]');
-
-    if (img) {
-      openLightbox(img.getAttribute('src'));
-    }
-
-    const thumb = e.target.closest('.thumbs img');
-
-    if (thumb) {
-      openLightbox(thumb.getAttribute('src'));
-    }
+    if (img) openLightbox(img.getAttribute('src'));
   });
 
   $('saveSettings').addEventListener('click', saveSettings);
@@ -1213,6 +1371,8 @@ function bindEvents() {
   }, { passive: false });
 
   $('lightbox').addEventListener('pointerdown', e => {
+    if (e.target !== $('lbImg')) return;
+
     lbDragging = true;
 
     lbStart = {
@@ -1307,6 +1467,7 @@ async function reloadState() {
 /* ---------- boot ---------- */
 
 async function boot() {
+  ensureAdjustmentOptions();
   bindEvents();
 
   try {
