@@ -217,7 +217,44 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
   <img id="lbImg" alt="Screenshot enlarged">
 </div>
 
+
 <script src="storage.js"></script>
+
+<script>
+(function () {
+  function showDiagnostic(message) {
+    const banner = document.getElementById('errorBanner');
+    if (banner) {
+      banner.textContent = 'JARVIS ERROR: ' + message;
+      banner.classList.add('show');
+    }
+  }
+
+  window.addEventListener('error', function (event) {
+    showDiagnostic(
+      (event.message || 'Unknown JavaScript error') +
+      (event.filename ? ' | File: ' + event.filename.split('/').pop() : '') +
+      (event.lineno ? ' | Line: ' + event.lineno : '')
+    );
+  });
+
+  window.addEventListener('unhandledrejection', function (event) {
+    showDiagnostic(
+      'Promise error: ' +
+      (event.reason?.message || String(event.reason))
+    );
+  });
+
+  document.addEventListener('click', function (event) {
+    const target = event.target.closest('button');
+    if (target) {
+      console.log('Jarvis received tap:', target.textContent.trim());
+    }
+  }, true);
+})();
+</script>
+
 <script src="app.js"></script>
+
 </body>
 </html>
