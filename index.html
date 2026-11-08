@@ -63,7 +63,7 @@ main{min-width:0}
 .mini{background:linear-gradient(145deg,#111f35,#091322);border:1px solid #263958;border-radius:11px;padding:10px}
 .mini span{font-size:11px}.mini b{display:block;font-size:19px;margin-top:4px}
 .pill{display:inline-block;padding:4px 8px;border-radius:99px;background:#142b47;color:#8dcaff;font-size:10px;font-weight:750}
-.pill.win{background:#064832;color:#56f0b4}.pill.loss{background:#4b1728;color:#ff91a5}.pill.open{background:#3a2f14;color:#ffd479}
+.pill.win{background:#064832;color:#56f0b4}.pill.draw{background:#665014;color:#ffe36b}.pill.loss{background:#4b1728;color:#ff91a5}.pill.open{background:#3a2f14;color:#ffd479}
 .bar{height:8px;background:#172a40;border-radius:10px;overflow:hidden;margin-top:6px}
 .bar i{display:block;height:100%;background:linear-gradient(90deg,#087cff,#20baff)}
 .empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed #29415e;border-radius:12px;background:#0a1425}
@@ -80,6 +80,16 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
 .tabs{display:flex;gap:6px;margin-bottom:12px}
 .tabs button{flex:1;border:1px solid #293b5c;background:#0a1222;border-radius:10px;padding:9px 5px;color:#c3cce0;min-height:39px;font-weight:650}
 .tabs button.active{background:linear-gradient(100deg,#087cff,#075ee0);border-color:#087cff;color:#fff;box-shadow:0 4px 12px #087cff36}
+.result-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.result-choice{border:1px solid #30476c;background:#101b30;border-radius:10px;min-height:43px;padding:10px 8px;font-weight:800;color:#dce7f7}
+.result-choice.win.active{background:#075438;border-color:#00d889;color:#72f5bd}
+.result-choice.draw.active{background:#665014;border-color:#facc15;color:#ffe36b}
+.result-choice.loss.active{background:#541b2b;border-color:#ff405b;color:#ff9bad}
+.result-choice.open.active{background:#3a2f14;border-color:#d6a638;color:#ffd479}
+.filter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:10px 0}
+.filter-grid .field{margin:0}
+.filter-grid select,.filter-grid input{width:100%;min-width:0;background:#080f20;border:1px solid #293b5c;border-radius:10px;padding:10px;color:#f4f7ff;min-height:41px}
+@media(max-width:380px){.filter-grid{grid-template-columns:1fr}}
 .section{display:none}.section.active{display:block;animation:sectionIn .2s ease}
 @keyframes sectionIn{from{opacity:.5;transform:translateY(4px)}to{opacity:1;transform:none}}
 .thumbs{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
@@ -133,7 +143,14 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
           <div class="field"><label>Currency pair</label><input id="pair" placeholder="EUR/USD" required maxlength="40"></div>
           <div class="field"><label>Date and time</label><input id="tradeDate" type="datetime-local" required></div>
           <div class="field"><label>Direction</label><select id="direction"><option>CALL</option><option>PUT</option></select></div>
-          <div class="field"><label>Result</label><select id="result"><option value="WIN">WIN</option><option value="LOSS">LOSS</option><option value="OPEN">OPEN / UNRESOLVED</option></select></div>
+          <div class="field"><label>Trade result</label><input id="result" type="hidden" value="WIN">
+            <div class="result-picker" id="resultPicker" role="group" aria-label="Trade result">
+              <button type="button" class="result-choice win active" data-result="WIN">WIN</button>
+              <button type="button" class="result-choice draw" data-result="DRAW">DRAW</button>
+              <button type="button" class="result-choice loss" data-result="LOSS">LOSS</button>
+            </div>
+            <button type="button" class="result-choice open" data-result="OPEN" style="margin-top:6px;width:100%">OPEN / UNRESOLVED</button>
+          </div>
           <div class="field"><label>Amount risked</label><input id="risk" type="number" min="0" step="0.01" placeholder="10"></div>
           <div class="field"><label>Payout (%)</label><input id="payout" type="number" min="0" step="0.1" value="80"></div>
           <div class="field"><label>Confidence (1–10)</label><input id="confidence" type="number" min="1" max="10" placeholder="7"></div>
@@ -153,20 +170,31 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
     </section>
     <section id="history" class="section">
       <div class="panel">
-        <div class="row between"><h3>Trade History</h3><input id="historySearch" class="search" style="max-width:260px" placeholder="Search pair, reason, notes..."></div>
-        <div class="tabs" id="historyTabs"><button class="active" data-filter="ALL">All</button><button data-filter="WIN">Wins</button><button data-filter="LOSS">Losses</button></div>
+        <div class="row between"><h3>Trade History</h3></div>
+        <p class="muted" style="font-size:11px;margin:0 0 8px">Narrow your history with the filters. You can combine filters, or use the search box for a pair, reason, or word from your notes.</p>
+        <div class="filter-grid">
+          <div class="field"><label for="historyPairFilter">Currency pair</label><select id="historyPairFilter"><option value="ALL">All pairs</option></select></div>
+          <div class="field"><label for="historyDirectionFilter">Direction</label><select id="historyDirectionFilter"><option value="ALL">All directions</option><option value="CALL">CALL / Buy</option><option value="PUT">PUT / Sell</option></select></div>
+          <div class="field"><label for="historyEntryTfFilter">Actual entry timeframe</label><select id="historyEntryTfFilter"><option value="ALL">All entry timeframes</option><option>1M</option><option>2M</option><option>3M</option><option>5M</option><option>10M</option><option>15M</option><option>30M</option><option>1H</option><option>2H</option><option>4H</option><option>1D</option><option value="NONE">Not recorded</option></select></div>
+          <div class="field"><label for="historySessionFilter">Trading session</label><select id="historySessionFilter"><option value="ALL">All sessions</option><option>London</option><option>New York</option><option>Asian</option><option>Sydney</option><option>London/New York overlap</option><option>Custom</option></select></div>
+          <div class="field"><label for="historyFromDate">From date</label><input id="historyFromDate" type="date"></div>
+          <div class="field"><label for="historyToDate">To date</label><input id="historyToDate" type="date"></div>
+        </div>
+        <div class="row" style="margin:8px 0"><input id="historySearch" class="search" placeholder="Optional: search pair, reason, or notes..."><button class="btn small" type="button" id="clearHistoryFilters">Clear filters</button></div>
+        <div class="tabs" id="historyTabs"><button class="active" data-filter="ALL">All</button><button data-filter="WIN">Wins</button><button data-filter="DRAW">Draws</button><button data-filter="LOSS">Losses</button><button data-filter="OPEN">Open</button></div>
         <div id="historyTable"></div>
       </div>
     </section>
     <section id="analytics" class="section">
       <div class="panel"><h3>Analytics Overview</h3><div class="cards" id="analyticsTop"></div></div>
-      <div class="panel"><h3>Daily Performance by Number of Trades</h3><p class="muted">Compare days when you take different numbers of trades. Open trades count toward the daily trade total; win rate and profit/loss use completed trades.</p><div id="dailyTradePerformance"></div></div>
+      <div class="panel"><h3>Daily Performance by Number of Trades</h3><p class="muted">Compare results on days when you take different numbers of trades. Open trades count toward the daily trade total; win rate and P/L use completed trades only.</p><div id="dailyTradePerformance"></div></div>
       <div class="panel"><h3>Win Rate by Number of Reasons</h3><div id="byCount"></div></div>
       <div class="panel"><h3>Single vs Multi-Timeframe</h3><div id="byCategory"></div></div>
       <div class="panel"><h3>Exact Reason Combination Performance</h3><div id="byCombo"></div></div>
       <div class="panel"><h3>Performance by Pair, Session, Direction &amp; Condition</h3><div id="dimensions"></div></div>
       <div class="panel"><h3>Individual Reason Performance</h3><div id="individualReasons"></div></div>
       <div class="panel"><h3>Timeframe Performance</h3><div id="timeframeStats"></div></div>
+      <div class="panel"><h3>Performance by Actual Entry Timeframe</h3><div id="entryTimeframeStats"></div></div>
       <div class="panel"><h3>Execution &amp; Setup Quality</h3><div id="qualityStats"></div></div>
       <div class="panel"><h3>Risk &amp; Losing Streaks</h3><div id="riskStats"></div></div>
     </section>
@@ -182,7 +210,7 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
           <div class="field"><label>Currency</label><select id="currency"><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option></select></div>
           <div class="field"><label>Default session</label><select id="defaultSession"><option>New York</option><option>London</option><option>Asian</option><option>Sydney</option><option>London/New York overlap</option><option>Custom</option></select></div>
         </div>
-        <p class="muted" style="font-size:11px;margin:8px 0 12px">Your opening balance is the account balance on the date you begin tracking in Jarvis. Only record deposits and withdrawals that happen after that point. Do not enter older deposits that are already included in your opening balance.</p>
+        <p class="muted">Only record deposits and withdrawals that happen after this opening balance is set. Do not enter historical deposits already included in your opening balance.</p>
         <button class="btn primary" id="saveSettings" type="button">Save Preferences</button>
       </div>
       <div class="panel"><h3>Trading Reasons</h3><p class="muted">Add, rename, archive, or reactivate setup reasons. Historical trades keep their reason IDs and name snapshots.</p>
@@ -190,10 +218,11 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
         <div id="reasonList" style="margin-top:12px"></div>
       </div>
       <div class="panel"><h3>Backup &amp; Restore</h3><p class="muted">Export a complete JSON backup with trades, reason library, screenshots, transactions, and settings.</p>
-        <div class="row"><button class="btn primary" id="exportBtn" type="button">Export Full Backup</button><label class="btn" for="importFile">Restore Backup</label><input id="importFile" type="file" accept="application/json" hidden></div>
+        <div class="row"><button class="btn primary" id="exportBtn" type="button">Export Full Backup (JSON)</button><button class="btn" id="exportCsvBtn" type="button">Export Trades (CSV)</button><label class="btn" for="importFile">Restore Backup</label><input id="importFile" type="file" accept="application/json" hidden></div>
+        <p class="muted" style="font-size:11px;margin-top:9px">CSV opens in Excel or Google Sheets and can also be uploaded to ChatGPT for analysis. It includes trade details and calculated P/L. JSON remains the full restore backup, including screenshots and settings.</p>
         <p class="muted" style="font-size:11px;margin-top:12px">Data is stored on this device/browser. Automatic and encrypted backups, cloud sync, and native APK packaging are not implemented in this build.</p>
       </div>
-      <div class="panel"><h3>Account Transactions</h3><p class="muted" style="font-size:11px">Deposits increase your balance. Withdrawals reduce it automatically. Adjustments let you correct the balance manually; use a positive amount to increase it or the decrease option to deduct money.</p>
+      <div class="panel"><h3>Account Transactions</h3><p class="muted">Deposits increase your balance; withdrawals decrease it automatically. Use Adjustment to add a manual increase or Adjustment (Decrease) to deduct a manual amount.</p>
         <form id="txForm" class="formgrid">
           <div class="field"><label>Type</label><select id="txType"><option>Deposit</option><option>Withdrawal</option><option>Adjustment</option></select></div>
           <div class="field"><label>Amount</label><input id="txAmount" type="number" min="0.01" step="0.01" required></div>
