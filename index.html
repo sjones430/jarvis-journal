@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -86,6 +85,10 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
 .result-choice.draw.active{background:#665014;border-color:#facc15;color:#ffe36b}
 .result-choice.loss.active{background:#541b2b;border-color:#ff405b;color:#ff9bad}
 .result-choice.open.active{background:#3a2f14;border-color:#d6a638;color:#ffd479}
+.direction-picker{display:grid;grid-template-columns:1fr;gap:6px}
+.direction-choice{width:100%;min-height:43px;padding:10px 8px;border:1px solid #30476c;background:#101b30;border-radius:10px;font-weight:800;color:#dce7f7}
+.direction-choice.buy.active{background:#075438;border-color:#00d889;color:#72f5bd}
+.direction-choice.sell.active{background:#541b2b;border-color:#ff405b;color:#ff9bad}
 .filter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:10px 0}
 .filter-grid .field{margin:0}
 .filter-grid select,.filter-grid input{width:100%;min-width:0;background:#080f20;border:1px solid #293b5c;border-radius:10px;padding:10px;color:#f4f7ff;min-height:41px}
@@ -142,7 +145,12 @@ td:last-child{border-right:1px solid #263958;border-radius:0 8px 8px 0}
         <div class="formgrid">
           <div class="field"><label>Currency pair</label><input id="pair" placeholder="EUR/USD" required maxlength="40"></div>
           <div class="field"><label>Date and time</label><input id="tradeDate" type="datetime-local" required></div>
-          <div class="field"><label>Direction</label><select id="direction"><option>CALL</option><option>PUT</option></select></div>
+          <div class="field"><label>Direction</label><input type="hidden" id="direction" value="CALL">
+            <div class="direction-picker" id="directionPicker" role="group" aria-label="Trade direction">
+              <button type="button" class="direction-choice buy active" data-direction="CALL">BUY</button>
+              <button type="button" class="direction-choice sell" data-direction="PUT">SELL</button>
+            </div>
+          </div>
           <div class="field"><label>Trade result</label><input id="result" type="hidden" value="WIN">
             <div class="result-picker" id="resultPicker" role="group" aria-label="Trade result">
               <button type="button" class="result-choice win active" data-result="WIN">WIN</button>
