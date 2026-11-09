@@ -1,3 +1,4 @@
+
 'use strict';
 
 const DEFAULT_REASONS = [
@@ -54,6 +55,7 @@ function entryCount(trade) {
   return Number.isFinite(n) && n >= 1 ? Math.min(n, 99) : 1;
 }
 
+// New records store risk PER ENTRY. Old records store the historical TOTAL risk.
 function totalRisk(t) {
   const risk = Math.max(0, num(t?.risk));
   return t?.riskMode === RISK_MODE
@@ -360,6 +362,7 @@ function renderHistory() {
         </tbody></table></div>`
     : '<div class="empty">No trades match those filters. Try clearing one or more filters.</div>';
 }
+
 /* ---------- multi-timeframe ---------- */
 
 function renderMulti() {
@@ -394,7 +397,7 @@ function renderMulti() {
           </tr>`).join('')}
         </tbody></table></div>`
     : '<div class="empty">No multi-timeframe trades yet. Select "Multi-timeframe" when logging a trade.</div>';
-}
+    }
 
 /* ---------- analytics ---------- */
 
@@ -584,8 +587,10 @@ function renderAnalytics() {
         .map(([k, a]) => `<div class="row between" style="padding:6px 0"><span>${esc(k)} · ${a.length} trades</span><b>${winRate(a).toFixed(1)}%</b></div>`).join('')
     : '<span class="muted">No actual entry timeframe data yet.</span>';
 
-  $('timeframeStats').innerHTML = analysisTfHtml;
-  $('entryTimeframeStats').innerHTML = entryTfHtml;
+  $('timeframeStats').innerHTML =
+    '<h4>Analysis timeframes</h4>' + analysisTfHtml +
+    '<hr style="border-color:#20344d;margin:12px 0">' +
+    '<h4>Actual entry timeframe</h4>' + entryTfHtml;
 
   const avgRating = key => {
     const a = r.filter(t => Number(t[key]) > 0);
@@ -644,7 +649,9 @@ function renderSetups() {
         </div>`;
       }).join('')
     : '<div class="empty">Log trades with reasons selected to build your setup library.</div>';
-                  }/* ---------- settings, reasons, transactions ---------- */
+}
+
+/* ---------- settings, reasons, transactions ---------- */
 
 function loadSettingsUI() {
   $('startingBalance').value = state.settings.startingBalance ?? 70;
@@ -717,7 +724,7 @@ function renderAll() {
   renderSetups();
   renderReasons();
   renderTx();
-}
+  }
 
 /* ---------- trade form ---------- */
 
@@ -860,6 +867,7 @@ async function saveTrade(e) {
     reasonNames
   }, new Set(state.reasons.map(r => r.id)));
 
+  // Explicitly retain the new fields after sanitization.
   trade.numberEntries = requestedEntries;
   trade.riskMode = RISK_MODE;
 
@@ -899,6 +907,8 @@ function editTrade(id) {
   const entries = entryCount(t);
   $('numberEntries').value = String(entries);
 
+  // Older trades stored risk as one total amount. Divide it for display
+  // when editing, so the new per-entry calculation preserves the old total.
   const displayRisk = t.riskMode === RISK_MODE
     ? num(t.risk)
     : num(t.risk) / entries;
@@ -1143,6 +1153,7 @@ async function importBackup(e) {
 
     await S.importAll(parsed.data, { skipValidate: false });
 
+    // Restore the entry count and risk mode exactly as recorded in the backup.
     const restoredTrades = await S.getAllTrades();
     const sourceById = new Map(parsed.data.trades.map(t => [t.id, t]));
 
@@ -1220,6 +1231,7 @@ function bindEvents() {
   $('clearForm').addEventListener('click', clearForm);
   $('cancelEdit').addEventListener('click', clearForm);
 
+  // Manual screenshot attachments remain available. No OCR or automatic reading.
   $('screenshots').addEventListener('change', async e => {
     const files = [...e.target.files];
 
@@ -1236,7 +1248,9 @@ function bindEvents() {
           tf: '',
           reasonIds: []
         });
-      } catch {}
+      } catch {
+        // Skip unreadable files.
+      }
     }
 
     renderShotMeta();
@@ -1320,6 +1334,7 @@ function bindEvents() {
     renderHistory();
   });
 
+  // Screenshot thumbnails open in the existing manual viewer.
   document.body.addEventListener('click', e => {
     const img = e.target.closest('img[data-lightbox]');
     if (img) openLightbox(img.getAttribute('src'));
@@ -1421,7 +1436,9 @@ async function reloadState() {
   if (!reasons || reasons.length === 0) {
     try {
       await S.putReasons(state.reasons);
-    } catch {}
+    } catch {
+      // Non-fatal.
+    }
   }
 }
 
@@ -1460,6 +1477,8 @@ if (document.readyState === 'loading') {
 } else {
   boot();
 }
+
+/* ---------- public app interface ---------- */
 
 window.JarvisApp = {
   state,
