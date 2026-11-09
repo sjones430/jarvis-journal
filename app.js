@@ -35,6 +35,8 @@ const state = {
   writable: false
 };
 
+/* ---------- core helpers ---------- */
+
 const money = n => {
   const v = Number.isFinite(Number(n)) ? Number(n) : 0;
   try {
@@ -104,6 +106,9 @@ const sampleLabel = n =>
   n < 30 ? 'Preliminary' :
   n < 50 ? 'Developing' :
   n < 100 ? 'Stronger evidence' : 'Larger sample';
+
+/* ---------- transactions ---------- */
+
 function isDecreaseAdjustment(t) {
   return t && t.type === 'Adjustment' &&
     String(t.note || '').startsWith(DECREASE_ADJUSTMENT_MARKER);
@@ -135,6 +140,8 @@ function ensureAdjustmentOptions() {
     select.appendChild(option);
   }
 }
+
+/* ---------- screenshots: manual attachments only ---------- */
 
 function renderScreenshotThumbs(t) {
   const shots = Array.isArray(t.screenshots) ? t.screenshots : [];
@@ -172,6 +179,8 @@ function setWritable(v) {
   });
 }
 
+/* ---------- navigation ---------- */
+
 const TITLES = {
   dashboard: ['Dashboard', 'Your trading performance at a glance.'],
   log: ['Log Trade', 'Record a trade with all its context.'],
@@ -193,6 +202,8 @@ function nav(page) {
   if ($('pageSub')) $('pageSub').textContent = p;
 }
 
+/* ---------- reason and timeframe checkboxes ---------- */
+
 function renderChecks() {
   const active = state.reasons.filter(r => r.active);
   $('reasonChecks').innerHTML = active.map(r =>
@@ -203,6 +214,9 @@ function renderChecks() {
     `<label class="check"><input type="checkbox" name="tf" value="${esc(t)}">${esc(t)}</label>`
   ).join('');
 }
+
+/* ---------- dashboard ---------- */
+
 function renderDashboard() {
   const r = resolved();
   const wins = r.filter(t => t.result === 'WIN').length;
@@ -287,6 +301,8 @@ function renderCount(elNode, arr) {
     : '<div class="empty">No resolved trades to analyze yet.</div>';
 }
 
+/* ---------- history ---------- */
+
 function renderHistory() {
   const q = ($('historySearch')?.value || '').trim().toLowerCase();
   const pair = $('historyPairFilter')?.value || 'ALL';
@@ -343,7 +359,9 @@ function renderHistory() {
           </tr>`).join('')}
         </tbody></table></div>`
     : '<div class="empty">No trades match those filters. Try clearing one or more filters.</div>';
-                      }
+}
+/* ---------- multi-timeframe ---------- */
+
 function renderMulti() {
   const a = state.trades.filter(t => t.category === 'Multi-timeframe');
   const r = a.filter(t => ['WIN', 'LOSS', 'DRAW'].includes(t.result));
@@ -377,6 +395,8 @@ function renderMulti() {
         </tbody></table></div>`
     : '<div class="empty">No multi-timeframe trades yet. Select "Multi-timeframe" when logging a trade.</div>';
 }
+
+/* ---------- analytics ---------- */
 
 function profitFactor(a) {
   const wins = a.filter(t => pnl(t) > 0).reduce((s, t) => s + pnl(t), 0);
@@ -559,13 +579,12 @@ function renderAnalytics() {
         .map(([k, a]) => `<div class="row between" style="padding:6px 0"><span>${esc(k)} · ${a.length} trades</span><b>${winRate(a).toFixed(1)}%</b></div>`).join('')
     : '<span class="muted">No analysis timeframe data yet.</span>';
 
-  $('timeframeStats').innerHTML = analysisTfHtml;
-
   const entryTfHtml = Object.keys(entryTf).length
     ? Object.entries(entryTf).sort((a, b) => TIMEFRAMES.indexOf(a[0]) - TIMEFRAMES.indexOf(b[0]))
         .map(([k, a]) => `<div class="row between" style="padding:6px 0"><span>${esc(k)} · ${a.length} trades</span><b>${winRate(a).toFixed(1)}%</b></div>`).join('')
     : '<span class="muted">No actual entry timeframe data yet.</span>';
 
+  $('timeframeStats').innerHTML = analysisTfHtml;
   $('entryTimeframeStats').innerHTML = entryTfHtml;
 
   const avgRating = key => {
@@ -593,6 +612,8 @@ function renderAnalytics() {
     `<div class="row between"><span>Longest consecutive losing streak</span><b>${maxStreak}</b></div>` +
     `<div class="row between" style="margin-top:10px"><span>Average total risk per trade</span><b>${money(avgRisk)}</b></div>`;
 }
+
+/* ---------- setups ---------- */
 
 function renderSetups() {
   const cache = new Map();
@@ -623,7 +644,7 @@ function renderSetups() {
         </div>`;
       }).join('')
     : '<div class="empty">Log trades with reasons selected to build your setup library.</div>';
-}
+                  }/* ---------- settings, reasons, transactions ---------- */
 
 function loadSettingsUI() {
   $('startingBalance').value = state.settings.startingBalance ?? 70;
@@ -684,6 +705,8 @@ function updateBalance() {
     (balance - start >= 0 ? '▲ +' : '▼ ') + money(balance - start) + ' since starting balance';
 }
 
+/* ---------- render all ---------- */
+
 function renderAll() {
   loadSettingsUI();
   renderChecks();
@@ -695,6 +718,8 @@ function renderAll() {
   renderReasons();
   renderTx();
 }
+
+/* ---------- trade form ---------- */
 
 function nowLocalInput() {
   const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
@@ -770,6 +795,8 @@ function readFileAsDataURL(file) {
   });
 }
 
+/* ---------- save trade ---------- */
+
 async function saveTrade(e) {
   e.preventDefault();
 
@@ -839,4 +866,608 @@ async function saveTrade(e) {
   try {
     await S.putTrade(trade);
   } catch (err) {
-    return showError('Could not save
+    return showError('Could not save trade: ' + err.message);
+  }
+
+  if (old) {
+    state.trades = state.trades.map(x => x.id === id ? trade : x);
+  } else {
+    state.trades.push(trade);
+  }
+
+  clearForm();
+  renderAll();
+  nav('history');
+}
+
+function editTrade(id) {
+  const t = state.trades.find(x => x.id === id);
+  if (!t) return;
+
+  nav('log');
+  $('editId').value = id;
+  $('formTitle').textContent = 'Edit Trade';
+
+  [
+    'pair','payout','confidence','session','condition','category',
+    'entryTimeframe','setupQuality','executionQuality','notes'
+  ].forEach(k => { $(k).value = t[k] ?? ''; });
+
+  setTradeResult(t.result || 'OPEN');
+  setTradeDirection(displayDirection(t.direction));
+
+  const entries = entryCount(t);
+  $('numberEntries').value = String(entries);
+
+  const displayRisk = t.riskMode === RISK_MODE
+    ? num(t.risk)
+    : num(t.risk) / entries;
+
+  $('risk').value = Number(displayRisk.toFixed(8));
+  $('tradeDate').value = t.date;
+
+  renderChecks();
+  document.querySelectorAll('input[name="reason"]').forEach(x => {
+    x.checked = (t.reasonIds || []).includes(x.value);
+  });
+  document.querySelectorAll('input[name="tf"]').forEach(x => {
+    x.checked = (t.timeframes || []).includes(x.value);
+  });
+
+  state.pendingShots = Array.isArray(t.screenshots)
+    ? t.screenshots.map(s => ({
+        ...s,
+        reasonIds: Array.isArray(s.reasonIds) ? [...s.reasonIds] : []
+      }))
+    : [];
+
+  renderShotMeta();
+}
+
+async function deleteTrade(id) {
+  if (!confirm('Delete this trade and its screenshots?')) return;
+  try {
+    await S.deleteTrade(id);
+    state.trades = state.trades.filter(t => t.id !== id);
+    renderAll();
+  } catch (err) {
+    showError('Could not delete: ' + err.message);
+  }
+}
+
+/* ---------- settings ---------- */
+
+async function saveSettings() {
+  const s = U.sanitizeSettings({
+    startingBalance: $('startingBalance').value,
+    defaultPayout: $('defaultPayout').value,
+    currency: $('currency').value,
+    defaultSession: $('defaultSession').value
+  });
+
+  try {
+    await S.putSettings(s);
+    state.settings = s;
+    renderAll();
+    alert('Preferences saved.');
+  } catch (err) {
+    showError('Could not save settings: ' + err.message);
+  }
+}
+
+/* ---------- reasons ---------- */
+
+async function addReason(e) {
+  e.preventDefault();
+  const name = $('newReason').value.trim();
+  if (!name) return;
+
+  if (state.reasons.some(r => r.name.toLowerCase() === name.toLowerCase())) {
+    return alert('That reason already exists.');
+  }
+
+  const r = U.sanitizeReason({ id: U.uid(), name, active: true });
+  try {
+    await S.putReason(r);
+    state.reasons.push(r);
+    $('newReason').value = '';
+    renderAll();
+  } catch (err) {
+    showError('Could not add reason: ' + err.message);
+  }
+}
+
+async function renameReason(id) {
+  const r = reasonById(id);
+  if (!r) return;
+
+  const n = prompt('Rename reason', r.name);
+  if (!n || !n.trim()) return;
+
+  const next = U.sanitizeReason({ ...r, name: n.trim() });
+  try {
+    await S.putReason(next);
+    r.name = next.name;
+
+    const updates = [];
+    state.trades.forEach(t => {
+      const usedOnTrade = (t.reasonIds || []).includes(id);
+      const usedOnScreenshot = (t.screenshots || []).some(s => (s.reasonIds || []).includes(id));
+
+      if (usedOnTrade || usedOnScreenshot) {
+        t.reasonNames = t.reasonNames || {};
+        t.reasonNames[id] = next.name;
+        t.updatedAt = Date.now();
+        updates.push(S.putTrade(t));
+      }
+    });
+
+    await Promise.all(updates);
+    renderAll();
+  } catch (err) {
+    showError('Could not rename: ' + err.message);
+  }
+}
+
+async function archiveReason(id) {
+  const r = reasonById(id);
+  if (!r) return;
+  const next = { ...r, active: !r.active };
+
+  try {
+    await S.putReason(next);
+    r.active = next.active;
+    renderAll();
+  } catch (err) {
+    showError('Could not update reason: ' + err.message);
+  }
+}
+
+/* ---------- account transactions ---------- */
+
+async function addTransaction(e) {
+  e.preventDefault();
+
+  const selectedType = $('txType').value;
+  const decrease = selectedType === 'Adjustment (Decrease)';
+
+  const tx = U.sanitizeTransaction({
+    id: U.uid(),
+    type: decrease ? 'Adjustment' : selectedType,
+    amount: $('txAmount').value,
+    date: $('txDate').value,
+    note: (decrease ? DECREASE_ADJUSTMENT_MARKER : '') + $('txNote').value
+  });
+
+  try {
+    await S.putTransaction(tx);
+    state.transactions.push(tx);
+    $('txForm').reset();
+    renderTx();
+    updateBalance();
+  } catch (err) {
+    showError('Could not add transaction: ' + err.message);
+  }
+}
+
+/* ---------- backup and export ---------- */
+
+async function exportBackup() {
+  try {
+    const payload = await S.exportAll();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'jarvis-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (err) {
+    showError('Export failed: ' + err.message);
+  }
+}
+
+function csvCell(value) {
+  return '"' + String(value ?? '').replace(/"/g, '""') + '"';
+}
+
+async function exportTradesCsv() {
+  try {
+    const cache = new Map();
+    const headers = [
+      'Date and Time','Currency Pair','Direction','Number of Entries','Result',
+      'Actual Entry Timeframe','Analysis Timeframes','Amount Risked Per Entry',
+      'Total Risk','Payout Percent','Profit/Loss','Session','Market Condition',
+      'Trade Category','Setup Quality','Execution Quality','Reasons','Notes','Screenshot Count'
+    ];
+
+    const rows = [...state.trades]
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map(t => [
+        t.date,
+        t.pair,
+        displayDirection(t.direction),
+        entryCount(t),
+        t.result,
+        t.entryTimeframe || '',
+        (t.timeframes || []).join(' + '),
+        t.riskMode === RISK_MODE ? num(t.risk) : num(t.risk) / entryCount(t),
+        totalRisk(t),
+        num(t.payout),
+        Number(pnl(t).toFixed(8)),
+        t.session,
+        t.condition,
+        t.category,
+        t.setupQuality ?? '',
+        t.executionQuality ?? '',
+        reasonsOf(t, cache).join(' + '),
+        t.notes || '',
+        (t.screenshots || []).length
+      ]);
+
+    const csv = '\ufeff' + [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `jarvis-trades-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showError('Could not export trade data: ' + err.message);
+  }
+}
+
+async function importBackup(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+
+  try {
+    const text = await f.text();
+    let parsed;
+
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error('File is not valid JSON.');
+    }
+
+    if (!parsed || (parsed.app !== 'Jarvis' && parsed.app !== 'King of Snipers')) {
+      throw new Error('Not a Jarvis/King of Snipers backup.');
+    }
+    if (!parsed.data || !Array.isArray(parsed.data.trades)) {
+      throw new Error('Backup has no trade data.');
+    }
+    if (!confirm('Restore this backup? Current journal data will be replaced.')) return;
+
+    await S.importAll(parsed.data, { skipValidate: false });
+
+    const restoredTrades = await S.getAllTrades();
+    const sourceById = new Map(parsed.data.trades.map(t => [t.id, t]));
+
+    await Promise.all(restoredTrades.map(t => {
+      const source = sourceById.get(t.id) || {};
+      return S.putTrade({
+        ...t,
+        numberEntries: entryCount(source),
+        ...(source.riskMode === RISK_MODE ? { riskMode: RISK_MODE } : {})
+      });
+    }));
+
+    await reloadState();
+    renderAll();
+    alert('Backup restored.');
+  } catch (err) {
+    showError('Could not restore: ' + err.message);
+  } finally {
+    e.target.value = '';
+  }
+}
+
+/* ---------- screenshot viewer ---------- */
+
+let lbScale = 1;
+let lbX = 0;
+let lbY = 0;
+let lbDragging = false;
+let lbStart = null;
+
+function openLightbox(src) {
+  const lb = $('lightbox');
+  const img = $('lbImg');
+
+  img.src = src;
+  lbScale = 1;
+  lbX = 0;
+  lbY = 0;
+  img.style.transform = 'translate(0,0) scale(1)';
+  lb.classList.add('show');
+}
+
+function closeLightbox() {
+  $('lightbox').classList.remove('show');
+  $('lbImg').src = '';
+}
+
+function applyLightboxTransform() {
+  $('lbImg').style.transform = `translate(${lbX}px,${lbY}px) scale(${lbScale})`;
+}
+
+/* ---------- event wiring ---------- */
+
+function bindEvents() {
+  $('nav').addEventListener('click', e => {
+    const b = e.target.closest('button[data-page]');
+    if (b) nav(b.dataset.page);
+  });
+
+  document.body.addEventListener('click', e => {
+    const goto = e.target.closest('[data-goto]');
+    if (goto) nav(goto.dataset.goto);
+  });
+
+  $('tradeForm').addEventListener('submit', saveTrade);
+
+  document.querySelectorAll('[data-result]').forEach(button => {
+    button.addEventListener('click', () => setTradeResult(button.dataset.result));
+  });
+
+  document.querySelectorAll('[data-direction]').forEach(button => {
+    button.addEventListener('click', () => setTradeDirection(button.dataset.direction));
+  });
+
+  $('clearForm').addEventListener('click', clearForm);
+  $('cancelEdit').addEventListener('click', clearForm);
+
+  $('screenshots').addEventListener('change', async e => {
+    const files = [...e.target.files];
+
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+
+      try {
+        const data = await readFileAsDataURL(file);
+        if (!U.isDataImage(data)) continue;
+
+        state.pendingShots.push({
+          name: file.name,
+          data,
+          tf: '',
+          reasonIds: []
+        });
+      } catch {}
+    }
+
+    renderShotMeta();
+    e.target.value = '';
+  });
+
+  document.body.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+
+    const { action, id, idx } = btn.dataset;
+
+    if (action === 'edit') {
+      editTrade(id);
+    } else if (action === 'delete') {
+      deleteTrade(id);
+    } else if (action === 'delete-transaction') {
+      deleteTransaction(id);
+    } else if (action === 'remove-shot') {
+      state.pendingShots.splice(Number(idx), 1);
+      renderShotMeta();
+    } else if (action === 'rename-reason') {
+      renameReason(id);
+    } else if (action === 'archive-reason') {
+      archiveReason(id);
+    }
+  });
+
+  $('shotMeta').addEventListener('change', e => {
+    const target = e.target;
+
+    if (target.matches('select[data-action="shot-tf"]')) {
+      const i = Number(target.dataset.idx);
+      if (state.pendingShots[i]) state.pendingShots[i].tf = target.value;
+    } else if (target.matches('select[data-action="shot-reasons"]')) {
+      const i = Number(target.dataset.idx);
+      if (state.pendingShots[i]) {
+        state.pendingShots[i].reasonIds = [...target.selectedOptions].map(o => o.value);
+      }
+    }
+  });
+
+  let searchTimer = null;
+
+  $('historySearch').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(renderHistory, 150);
+  });
+
+  [
+    'historyPairFilter','historyDirectionFilter','historyEntryTfFilter',
+    'historySessionFilter','historyFromDate','historyToDate'
+  ].forEach(id => $(id).addEventListener('change', renderHistory));
+
+  $('clearHistoryFilters').addEventListener('click', () => {
+    [
+      'historyPairFilter','historyDirectionFilter',
+      'historyEntryTfFilter','historySessionFilter'
+    ].forEach(id => { $(id).value = 'ALL'; });
+
+    $('historyFromDate').value = '';
+    $('historyToDate').value = '';
+    $('historySearch').value = '';
+    state.historyFilter = 'ALL';
+
+    document.querySelectorAll('#historyTabs button').forEach(x => {
+      x.classList.toggle('active', x.dataset.filter === 'ALL');
+    });
+
+    renderHistory();
+  });
+
+  $('historyTabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-filter]');
+    if (!b) return;
+
+    state.historyFilter = b.dataset.filter;
+    document.querySelectorAll('#historyTabs button').forEach(x => {
+      x.classList.toggle('active', x === b);
+    });
+    renderHistory();
+  });
+
+  document.body.addEventListener('click', e => {
+    const img = e.target.closest('img[data-lightbox]');
+    if (img) openLightbox(img.getAttribute('src'));
+  });
+
+  $('saveSettings').addEventListener('click', saveSettings);
+  $('reasonForm').addEventListener('submit', addReason);
+  $('txForm').addEventListener('submit', addTransaction);
+  $('exportBtn').addEventListener('click', exportBackup);
+  $('exportCsvBtn').addEventListener('click', exportTradesCsv);
+  $('importFile').addEventListener('change', importBackup);
+
+  $('lbClose').addEventListener('click', closeLightbox);
+
+  $('lightbox').addEventListener('click', e => {
+    if (e.target === $('lightbox')) closeLightbox();
+  });
+
+  $('lightbox').addEventListener('wheel', e => {
+    e.preventDefault();
+    lbScale = clamp(lbScale * (e.deltaY < 0 ? 1.1 : 0.9), 0.5, 6);
+    applyLightboxTransform();
+  }, { passive: false });
+
+  $('lightbox').addEventListener('pointerdown', e => {
+    if (e.target !== $('lbImg')) return;
+
+    lbDragging = true;
+    lbStart = {
+      x: e.clientX - lbX,
+      y: e.clientY - lbY
+    };
+    $('lbImg').setPointerCapture(e.pointerId);
+  });
+
+  $('lightbox').addEventListener('pointermove', e => {
+    if (!lbDragging) return;
+    lbX = e.clientX - lbStart.x;
+    lbY = e.clientY - lbStart.y;
+    applyLightboxTransform();
+  });
+
+  $('lightbox').addEventListener('pointerup', () => {
+    lbDragging = false;
+  });
+
+  $('lightbox').addEventListener('pointercancel', () => {
+    lbDragging = false;
+  });
+
+  let lastTap = 0;
+  $('lightbox').addEventListener('touchend', () => {
+    const now = Date.now();
+
+    if (now - lastTap < 300) {
+      lbScale = lbScale > 1 ? 1 : 2;
+      if (lbScale === 1) {
+        lbX = 0;
+        lbY = 0;
+      }
+      applyLightboxTransform();
+    }
+    lastTap = now;
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeLightbox();
+  });
+}
+
+/* ---------- load storage ---------- */
+
+async function reloadState() {
+  const [trades, reasons, transactions, settings] = await Promise.all([
+    S.getAllTrades(),
+    S.getAllReasons(),
+    S.getAllTransactions(),
+    S.getSettings()
+  ]);
+
+  state.trades = (trades || []).map(t => ({
+    ...t,
+    numberEntries: entryCount(t)
+  }));
+
+  state.reasons = reasons && reasons.length
+    ? reasons
+    : DEFAULT_REASONS.map((name, i) =>
+        U.sanitizeReason({
+          id: 'r' + i,
+          name,
+          active: true
+        })
+      );
+
+  state.transactions = transactions || [];
+  state.settings = settings || U.sanitizeSettings({});
+
+  if (!reasons || reasons.length === 0) {
+    try {
+      await S.putReasons(state.reasons);
+    } catch {}
+  }
+}
+
+/* ---------- startup ---------- */
+
+async function boot() {
+  ensureAdjustmentOptions();
+  bindEvents();
+
+  try {
+    await S.init();
+    await reloadState();
+    setWritable(true);
+    clearError();
+  } catch (err) {
+    setWritable(false);
+    showError(
+      'Storage could not be opened: ' +
+      err.message +
+      ' — writes are disabled to protect your data.'
+    );
+  }
+
+  clearForm();
+  renderAll();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    });
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot, { once: true });
+} else {
+  boot();
+}
+
+window.JarvisApp = {
+  state,
+  nav,
+  renderAll,
+  saveTrade,
+  editTrade,
+  deleteTrade,
+  exportBackup,
+  importBackup
+};
